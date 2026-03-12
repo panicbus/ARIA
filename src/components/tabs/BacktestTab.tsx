@@ -6,11 +6,23 @@ import type { BacktestResult } from "../../types";
 
 const BACKTEST_DAYS = [30, 60, 90, 180] as const;
 
-export function BacktestTab({ tickers }: { tickers: string[] }) {
-  const [ticker, setTicker] = useState<string>(tickers[0] ?? "BTC");
+export function BacktestTab({
+  tickers,
+  preselectedTicker,
+}: {
+  tickers: string[];
+  preselectedTicker?: string | null;
+}) {
+  const allTickers = preselectedTicker && !tickers.includes(preselectedTicker)
+    ? [preselectedTicker, ...tickers]
+    : tickers;
+  const [ticker, setTicker] = useState<string>(preselectedTicker ?? allTickers[0] ?? "BTC");
   useEffect(() => {
-    if (tickers.length && !tickers.includes(ticker)) setTicker(tickers[0]);
-  }, [tickers, ticker]);
+    if (preselectedTicker) setTicker(preselectedTicker);
+  }, [preselectedTicker]);
+  useEffect(() => {
+    if (allTickers.length && !allTickers.includes(ticker)) setTicker(allTickers[0]);
+  }, [allTickers, ticker]);
   const [days, setDays] = useState<number>(90);
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -44,7 +56,7 @@ export function BacktestTab({ tickers }: { tickers: string[] }) {
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <select value={ticker} onChange={(e) => setTicker(e.target.value)} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 12px", color: "#f0f0f0", fontFamily: "var(--mono)", fontSize: 12 }}>
-          {tickers.map((t) => <option key={t} value={t}>{t}</option>)}
+          {allTickers.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <select value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 12px", color: "#f0f0f0", fontFamily: "var(--mono)", fontSize: 12 }}>
           {BACKTEST_DAYS.map((d) => <option key={d} value={d}>{d} days</option>)}

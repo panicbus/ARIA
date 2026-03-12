@@ -6,6 +6,7 @@ import { StatusDot } from "./components/ui/StatusDot";
 import { MetricCard } from "./components/ui/MetricCard";
 import { BacktestTab } from "./components/tabs/BacktestTab";
 import { MemoryTab } from "./components/tabs/MemoryTab";
+import { ScannerTab } from "./components/tabs/ScannerTab";
 import { ChatMessage } from "./components/chat/ChatMessage";
 import { MarkdownContent } from "./components/chat/MarkdownContent";
 import { HoldingsAccordion } from "./components/sidebar/HoldingsAccordion";
@@ -53,6 +54,7 @@ export default function App() {
   const [holdingsOpen, setHoldingsOpen] = useState(false);
   const [ohlcvRefreshAll, setOhlcvRefreshAll] = useState(false);
   const [marketPulseOpen, setMarketPulseOpen] = useState(true);
+  const [backtestPreselectedTicker, setBacktestPreselectedTicker] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -177,6 +179,23 @@ export default function App() {
     } catch (_) {}
   };
 
+  const addToWatchlist = async (ticker: string) => {
+    const sym = ticker.toUpperCase();
+    const watchRow = memories.find((m) => m.key === "watchlist");
+    const current = watchRow?.value?.trim() ?? "";
+    const existing = current.split(/[\s,]+/).map((s) => s.toUpperCase()).filter(Boolean);
+    if (existing.includes(sym)) return;
+    const updated = [...existing, sym].join(", ");
+    try {
+      await fetch(`${API}/memories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "watchlist", value: updated }),
+      });
+      loadMemories();
+    } catch (_) {}
+  };
+
   const generateBriefingNow = async () => {
     if (briefingGenerating) return;
     setBriefingGenerating(true);
@@ -260,7 +279,7 @@ export default function App() {
               <span style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)" }}>{online ? "SERVER ONLINE" : "SERVER OFFLINE"}</span>
             </div>
             <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 4 }}>
-              {["chat", "signals", "backtest", "briefing", "memory"].map(t => (
+              {["chat", "signals", "scanner", "backtest", "briefing", "memory"].map(t => (
                 <button key={t} onClick={() => setActiveTab(t)} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontFamily: "var(--mono)", cursor: "pointer", border: "none", background: activeTab === t ? "rgba(0,255,148,0.12)" : "transparent", color: activeTab === t ? "#00ff94" : "#555", transition: "all 0.2s" }}>
                   {t.toUpperCase()}
                 </button>
@@ -373,8 +392,19 @@ export default function App() {
                   </div>
                 )}
               </div>
+            ) : activeTab === "scanner" ? (
+              <ScannerTab
+                onAddToWatchlist={addToWatchlist}
+                onViewBacktest={(t) => {
+                  setBacktestPreselectedTicker(t);
+                  setActiveTab("backtest");
+                }}
+              />
             ) : activeTab === "backtest" ? (
-              <BacktestTab tickers={dashboard?.tickers ?? FALLBACK_TICKERS} />
+              <BacktestTab
+                tickers={dashboard?.tickers ?? FALLBACK_TICKERS}
+                preselectedTicker={activeTab === "backtest" ? backtestPreselectedTicker : null}
+              />
             ) : activeTab === "briefing" ? (
               <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
                 <div style={{ fontSize: 12, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 4 }}>BRIEFINGS</div>

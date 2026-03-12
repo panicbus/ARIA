@@ -64,6 +64,7 @@ type BriefingDeps = {
   generateSignals: () => void;
   buildLiveContext: () => string;
   buildMemoryContext: () => string;
+  getScannerTopPicks?: () => Array<{ symbol: string; signal: string; score: number; aria_reasoning: string | null; price: number }>;
 };
 
 export function createBriefingGenerators(deps: BriefingDeps) {
@@ -79,6 +80,7 @@ export function createBriefingGenerators(deps: BriefingDeps) {
     generateSignals,
     buildLiveContext,
     buildMemoryContext,
+    getScannerTopPicks,
   } = deps;
 
   async function generateBriefing(): Promise<BriefingRow | null> {
@@ -94,9 +96,16 @@ export function createBriefingGenerators(deps: BriefingDeps) {
 
     const liveContext = buildLiveContext();
     const memoryContext = buildMemoryContext();
+    const scannerPicks = getScannerTopPicks?.() ?? [];
+    const worthWatchingSection =
+      scannerPicks.length > 0
+        ? `\n--- Worth Watching Today (Scanner picks, score ≥+3) ---\n${scannerPicks
+            .map((p) => `${p.symbol}: ${p.signal} (score +${p.score}/6) — ${p.aria_reasoning ?? "—"}`)
+            .join("\n")}\n\nInclude 2-3 of the strongest in the briefing under a "Worth Watching Today" section. Keep it to 2 sentences per pick — ticker, signal, and one reason why. If no strong picks exist, skip that section.\n`
+        : "\n(No scanner picks with score ≥+3 — skip Worth Watching Today section.)\n";
 
     const userPrompt = `Write a concise morning briefing for Nico based on the live market data, signals, news, and memory below.
-
+${worthWatchingSection}
 Include:
 - Market summary for watched tickers (BTC, UBER, SPY, LTBR, GDX, GOLD)
 - Top signals with plain-English reasoning (not just BUY/SELL labels — explain why, reference RSI/MACD/MAs when available)

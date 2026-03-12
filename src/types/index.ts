@@ -85,6 +85,29 @@ export type Dashboard = {
   >;
 };
 
+export type ScannerResult = {
+  id: number;
+  symbol: string;
+  signal: string;
+  score: number;
+  rsi: number | null;
+  macd_histogram: number | null;
+  price: number;
+  change_24h: number | null;
+  indicator_data: string | null;
+  aria_reasoning: string | null;
+  category: string;
+  scanned_at: string;
+};
+
+export type ScannerStatus = {
+  lastScan: string | null;
+  tickersScanned: number;
+  scanning: boolean;
+  apiCallsRemaining: number;
+  universeSize: number;
+};
+
 export type BacktestResult = {
   ticker: string;
   days: number;

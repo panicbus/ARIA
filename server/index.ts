@@ -13,6 +13,7 @@ import { createLiveDataFetchers } from "./services/liveData";
 import { createGenerateSignals, createGenerateSignalForTicker } from "./services/signals";
 import { createBuildLiveContext, createBuildMemoryContext, createGetRiskContextForTicker } from "./services/context";
 import { createBriefingGenerators, sendBriefingEmail } from "./services/briefings";
+import { createScannerService } from "./services/scanner";
 import { TOOLS, createHandleToolCall, createRunMemoryExtraction } from "./services/chatTools";
 import { createMemoriesRouter } from "./routes/memories";
 import { createHealthRouter } from "./routes/health";
@@ -22,6 +23,7 @@ import { createSignalsRouter } from "./routes/signals";
 import { createBriefingsRouter } from "./routes/briefings";
 import { createBacktestRouter } from "./routes/backtest";
 import { createChatRouter } from "./routes/chat";
+import { createScannerRouter } from "./routes/scanner";
 
 dotenv.config();
 
@@ -214,6 +216,29 @@ async function start() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(symbol, date)
     );
+
+    CREATE TABLE IF NOT EXISTS scanner_universe (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      symbol TEXT UNIQUE NOT NULL,
+      category TEXT NOT NULL,
+      active INTEGER DEFAULT 1,
+      added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS scanner_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      symbol TEXT NOT NULL,
+      signal TEXT NOT NULL,
+      score INTEGER NOT NULL,
+      rsi REAL,
+      macd_histogram REAL,
+      price REAL,
+      change_24h REAL,
+      indicator_data TEXT,
+      aria_reasoning TEXT,
+      category TEXT,
+      scanned_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Migrations: add new columns to existing tables (no-op if column exists)
@@ -251,6 +276,16 @@ async function start() {
 
   const runBacktest = createRunBacktest({ db, execAll, getWatchedTickers });
 
+  const scannerService = createScannerService({
+    db,
+    execAll,
+    run,
+    saveDb,
+    getWatchedTickers,
+    anthropic,
+    cryptoIds: CRYPTO_COINGECKO_IDS,
+  });
+
   const { generateBriefing, generateEveningBriefing } = createBriefingGenerators({
     db,
     anthropic,
@@ -263,6 +298,7 @@ async function start() {
     generateSignals,
     buildLiveContext,
     buildMemoryContext,
+    getScannerTopPicks: () => scannerService.getTopPicks(3),
   });
 
   const handleToolCall = createHandleToolCall({
@@ -272,6 +308,7 @@ async function start() {
     getWatchedTickers,
     getRiskContextForTicker,
     generateSignalForTicker,
+    getScannerTopPicks: (min) => scannerService.getTopPicks(min ?? 0),
   });
   const runMemoryExtraction = createRunMemoryExtraction({ anthropic, handleToolCall });
 
@@ -300,6 +337,13 @@ async function start() {
     runMemoryExtraction,
   }));
   app.use("/api/memories", createMemoriesRouter({ db, execAll, saveDb }));
+  app.use("/api/scanner", createScannerRouter({
+    getActiveUniverse: scannerService.getActiveUniverse,
+    triggerScan: scannerService.triggerScan,
+    getResults: scannerService.getResults,
+    getStatus: scannerService.getStatus,
+  }));
+
   app.use("/api/ohlcv", createOhlcvRouter({
     db,
     execAll,
@@ -344,6 +388,11 @@ async function start() {
   // OHLCV refresh — daily at 06:00, before 8am briefing (Alphavantage free tier: 25 req/day)
   cron.schedule("0 6 * * *", () => {
     fetchAndStoreOHLCV().catch((err) => console.error("OHLCV refresh failed:", err));
+  });
+
+  // Scanner — daily at 07:00, before 8am briefing (scans universe, runs ARIA filter)
+  cron.schedule("0 7 * * *", () => {
+    scannerService.runScan().catch((err) => console.error("Scanner failed:", err));
   });
 
   // Morning briefing — every weekday at 08:00 local time

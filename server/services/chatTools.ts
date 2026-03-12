@@ -88,6 +88,11 @@ export const TOOLS: any[] = [
     },
   },
   {
+    name: "scan_market",
+    description: "Get ARIA's current top picks from the scanner. Use when Nico asks things like 'anything interesting in the market today?' or 'what should I be looking at beyond my portfolio?'. Returns signal, score, RSI, and ARIA's reasoning per ticker.",
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
     name: "web_search",
     description: "Search the web for current information. Use when Nico asks about recent events, news, facts, or topics you don't have in your database (e.g. 'what's the latest on X?', 'why did Y move?', 'what are developers saying about Z?'). Prefer get_news and get_prices for data you already have.",
     input_schema: {
@@ -109,10 +114,11 @@ type ChatToolsDeps = {
   getWatchedTickers: () => string[];
   getRiskContextForTicker: (ticker: string, signal?: string, indicatorData?: { score?: number } | null) => RiskContext;
   generateSignalForTicker: (ticker: string) => Promise<{ id: number; ticker: string; signal: string; reasoning: string; price: number; indicator_data: string | null } | null>;
+  getScannerTopPicks?: (scoreMin?: number) => Array<{ symbol: string; signal: string; score: number; rsi: number | null; aria_reasoning: string | null; price: number; change_24h: number | null; category: string }>;
 };
 
 export function createHandleToolCall(deps: ChatToolsDeps): (name: string, input: any) => Promise<any> {
-  const { db, execAll, saveDb, getWatchedTickers, getRiskContextForTicker, generateSignalForTicker } = deps;
+  const { db, execAll, saveDb, getWatchedTickers, getRiskContextForTicker, generateSignalForTicker, getScannerTopPicks } = deps;
 
   return async function handleToolCall(name: string, input: any): Promise<any> {
     switch (name) {
@@ -203,6 +209,10 @@ export function createHandleToolCall(deps: ChatToolsDeps): (name: string, input:
           const msg = e instanceof Error ? e.message : String(e);
           return { error: `Web search failed: ${msg}` };
         }
+      }
+      case "scan_market": {
+        const picks = getScannerTopPicks?.(0) ?? [];
+        return { picks };
       }
       default:
         return { error: `Unknown tool '${name}'` };
