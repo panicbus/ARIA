@@ -1,6 +1,6 @@
 # ARIA — Autonomous Research & Intelligence Assistant
 
-> Your personal intelligence layer for tech, finance, and developer growth.
+> Your personal intelligence layer for tech, finance, and developer growth. React + Claude + SQLite.
 
 ## Stack
 - **Frontend**: React + TypeScript + Vite (port 5173)
@@ -17,15 +17,16 @@
 npm install
 ```
 
-### 2. Configure your API key
+### 2. Configure API keys
 ```bash
 cp .env.example .env
 ```
-Open `.env` and add your Anthropic API key:
-```
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-```
-Get your key at: https://console.anthropic.com
+Open `.env` and add:
+
+- **`ANTHROPIC_API_KEY`** (required) — Claude chat, briefings, scanner. Get at [console.anthropic.com](https://console.anthropic.com)
+- **`FINNHUB_API_KEY`** — Live stock prices and scanner (free at finnhub.io)
+- **`ALPHAVANTAGE_API_KEY`** — OHLCV history, backtest, scanner indicators (25 req/day free)
+- **`TAVILY_API_KEY`** — Web search and evening briefing (optional)
 
 ### 3. Run ARIA
 ```bash
@@ -72,6 +73,15 @@ Open your browser to: **http://localhost:5173**
 - **Morning briefing** — Structured digest with market summary, signals with risk framing, HN news, action items (8am weekdays)
 - **Evening briefing** — 6pm weekdays: upside tickers, market-moving news, portfolio snapshot, tech/AI pulse; optional email delivery
 - **Holdings in sidebar** — Positions from Memory shown in collapsible accordion
+
+### Phase 5 — The Scanner ✅
+- **Proactive discovery** — Scans a curated universe (20–50 stocks by risk tolerance) beyond Nico’s holdings
+- **Same signal logic** — RSI, MACD, MAs applied across universe; composite score −6 to +6
+- **ARIA filtering** — Claude selects 3–7 top picks with plain‑English reasoning per ticker
+- **Scanner tab** — ARIA’s picks, full results accordion, “Add to Watchlist”, “View Backtest”, filter pills
+- **7am daily scan** — Runs before morning briefing; Alphavantage 25 req/day limit respected
+- **Morning briefing** — “Worth Watching Today” section from scanner picks (score ≥ +3)
+- **`scan_market` tool** — ARIA can answer “anything interesting in the market today?” from scanner data
 
 ---
 
@@ -120,16 +130,35 @@ For Gmail, use an [App Password](https://support.google.com/accounts/answer/1858
 ```
 aria/
 ├── server/
-│   └── index.ts          # Express API + Claude integration + SQLite
+│   ├── index.ts             # Express entry, DB init, cron jobs, route wiring
+│   ├── services/            # Business logic (modular, dependency injection)
+│   │   ├── backtest.ts
+│   │   ├── briefings.ts
+│   │   ├── chatTools.ts
+│   │   ├── context.ts
+│   │   ├── indicators.ts
+│   │   ├── liveData.ts
+│   │   ├── ohlcv.ts
+│   │   ├── scanner.ts       # Phase 5: universe, scan engine, ARIA filter
+│   │   └── signals.ts
+│   └── routes/
+│       ├── backtest.ts
+│       ├── briefings.ts
+│       ├── chat.ts
+│       ├── dashboard.ts
+│       ├── health.ts
+│       ├── memories.ts
+│       ├── ohlcv.ts
+│       ├── scanner.ts       # /api/scanner/*
+│       └── signals.ts
 ├── src/
-│   ├── App.tsx            # Main UI component
-│   └── main.tsx           # React entry point
-├── aria.db                # Auto-created SQLite database (gitignore this)
-├── .env                   # Your API key (gitignore this)
-├── .env.example           # Template
-├── package.json
-├── tsconfig.json
-└── vite.config.ts
+│   ├── App.tsx
+│   ├── components/
+│   │   └── tabs/            # ScannerTab, BacktestTab, MemoryTab, etc.
+│   └── main.tsx
+├── aria.db                  # SQLite (auto-created, gitignore)
+├── .env                     # API keys (gitignore)
+└── .env.example
 ```
 
 ---
@@ -154,7 +183,11 @@ aria/
 | GET | `/api/backtest?ticker=&days=` | Run backtest simulation |
 | GET | `/api/briefings` | List morning briefings |
 | POST | `/api/briefings/generate` | Generate morning briefing |
-| POST | `/api/briefings/generate-evening` | Generate 6pm evening briefing (upside tickers, news, portfolio, tech) |
+| POST | `/api/briefings/generate-evening` | Generate 6pm evening briefing |
+| GET | `/api/scanner/universe` | Active scanner universe (by risk tolerance) |
+| GET | `/api/scanner/results` | Latest scan results (ARIA picks first) |
+| GET | `/api/scanner/status` | Last scan time, scanning, API calls remaining |
+| POST | `/api/scanner/run` | Trigger scan (async, returns `{ status: "scanning" }`) |
 
 ---
 
@@ -172,4 +205,4 @@ The server backs up `aria.db` to a `backups/` folder at 3am on the **1st and 15t
 
 ---
 
-*Built by Nico × ARIA — Phases 1–4 complete*
+*Built by Nico × ARIA — Phases 1–5 complete*
