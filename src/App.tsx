@@ -3,64 +3,18 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-const API = "http://localhost:3001/api";
-
-const SYSTEM_NOTE = "ARIA is running locally. Connected to your Express server with SQLite memory.";
-
-const SUGGESTED_PROMPTS = [
-  { label: "📊 Signal Summary", text: "Summarize my current signals and what I should do next" },
-  { label: "🤖 AI Agents 2026", text: "What's the state of AI agents and agentic workflows in 2026?" },
-  { label: "📈 Ticker Check", text: "Give me a signal check on the tickers in my dashboard" },
-];
-
-type Message = {
-  id?: number;
-  role: "user" | "assistant";
-  content: string;
-  created_at?: string;
-  ts?: string;
-};
-
-type RiskContext = {
-  suggested_position_size_pct: number;
-  stop_loss_pct: number;
-  take_profit_pct: number;
-  risk_reward_ratio: number;
-  confidence: string;
-  warning?: string;
-};
-type IndicatorData = { rsi?: number; macd?: { macd: number; signal: number; histogram: number }; ma20?: number; ma50?: number; score?: number; methodology?: string } | null;
-type Signal = {
-  id: number;
-  ticker: string;
-  signal: string;
-  reasoning: string;
-  price: number;
-  created_at: string;
-  indicator_data?: IndicatorData;
-  risk_context?: RiskContext;
-};
-
-type PriceRow = { symbol: string; price: number; change_24h: number | null; source: string; updated_at: string };
-type NewsRow = { id: number; title: string; url: string | null; source: string; created_at: string };
-type Briefing = { id: number; content: string; created_at: string };
-type Memory = { id: number; key: string; value: string; confidence: number; source: string | null; updated_at: string; created_at: string | null };
-type Dashboard = {
-  prices: PriceRow[];
-  news: NewsRow[];
-  tickers?: string[];
-  signalsByTicker: Record<string, { signal: string; reasoning: string; price: number; indicator_data?: IndicatorData; risk_context?: RiskContext }>;
-};
-
-const FALLBACK_TICKERS = ["BTC", "AMD", "AMZN", "CLS"];
-type BacktestResult = {
-  ticker: string;
-  days: number;
-  summary: { total_return_pct: number; buy_and_hold_pct: number; win_rate: number; num_trades: number; best_trade_pct: number; worst_trade_pct: number; max_drawdown_pct: number };
-  trades: Array<{ entry_date: string; exit_date: string; entry_price: number; exit_price: number; return_pct: number; signal: string; outcome: string }>;
-  equity_curve: Array<{ date: string; value: number }>;
-  error?: string;
-};
+import { HoldingsCard } from "./components/holdings/HoldingsCard";
+import {
+  API,
+  SUGGESTED_PROMPTS,
+  FALLBACK_TICKERS,
+  DASHBOARD_POLL_MS,
+  MEMORY_SECTIONS,
+  RISK_OPTIONS,
+  SIGNALS_OPTIONS,
+  signalColors,
+} from "./config";
+import type { Message, Signal, Dashboard, Memory, Briefing, BacktestResult } from "./types";
 
 const TypingIndicator = () => (
   <div style={{ display: "flex", alignItems: "center", gap: "5px", padding: "12px 16px" }}>
@@ -84,11 +38,6 @@ const StatusDot = ({ active }: { active: boolean }) => (
     transition: "all 0.3s",
   }} />
 );
-
-const signalColors: Record<string, string> = {
-  "STRONG BUY": "#00ff94", BUY: "#00ff94", "STRONG SELL": "#ff4757", SELL: "#ff4757",
-  HOLD: "#ffd32a", WATCH: "#a29bfe",
-};
 
 const MetricCard = ({ label, value, sub, signal, rsi }: { label: string; value: string; sub?: string; signal?: string; rsi?: number }) => {
   const rsiColor = rsi != null ? (rsi > 70 ? "#ff4757" : rsi < 30 ? "#00ff94" : "#f0f0f0") : undefined;
@@ -116,220 +65,6 @@ const MetricCard = ({ label, value, sub, signal, rsi }: { label: string; value: 
   );
 };
 
-type OHLCVRow = { date: string; open: number; high: number; low: number; close: number; volume: number };
-
-function HoldingsCard({
-  memoryKey,
-  pos,
-  currentPrice,
-  apiBase,
-}: {
-  memoryKey: string;
-  pos: { ticker?: string; amount?: string | number; entry?: string | number };
-  currentPrice: number | null;
-  apiBase: string;
-}) {
-  const [tab, setTab] = useState<"summary" | "chart">("summary");
-  const [ohlcv, setOhlcv] = useState<OHLCVRow[] | null>(null);
-  const [ohlcvLoading, setOhlcvLoading] = useState(false);
-  const [ohlcvError, setOhlcvError] = useState<string | null>(null);
-
-  const ticker = (pos.ticker ?? "").toUpperCase().trim() || "—";
-  const amountDisplay = pos.amount != null && pos.amount !== "" ? String(pos.amount) : null;
-  const entryNum = typeof pos.entry === "number" ? pos.entry : (typeof pos.entry === "string" && pos.entry ? parseFloat(pos.entry) : null);
-  const entryDisplay = entryNum != null && !isNaN(entryNum) ? `@ $${entryNum >= 1000 ? entryNum.toLocaleString("en-US", { maximumFractionDigits: 0 }) : entryNum.toFixed(2)}` : "";
-  const val = currentPrice != null
-    ? (currentPrice >= 1000 ? `$${currentPrice.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : `$${Number(currentPrice).toFixed(2)}`)
-    : "—";
-  const pnlPct = currentPrice != null && entryNum != null && !isNaN(entryNum) && entryNum > 0
-    ? (((currentPrice - entryNum) / entryNum) * 100).toFixed(1)
-    : null;
-
-  useEffect(() => {
-    if (tab !== "chart" || ticker === "—") return;
-    setOhlcvError(null);
-    setOhlcvLoading(true);
-    const ctrl = new AbortController();
-    fetch(`${apiBase}/ohlcv/${ticker}?days=30`, { signal: ctrl.signal })
-      .then((r) => {
-        if (!r.ok) return r.json().then((err: { error?: string; detail?: string }) => { throw new Error(err?.detail ?? err?.error ?? `HTTP ${r.status}`); });
-        return r.json();
-      })
-      .then((data: unknown) => {
-        const arr = Array.isArray(data) ? data : null;
-        if (!arr?.length) {
-          setOhlcv(null);
-          return;
-        }
-        const rows = (arr as OHLCVRow[]).map((r) => ({
-          date: String(r?.date ?? ""),
-          open: Number(r?.open) || 0,
-          high: Number(r?.high) || 0,
-          low: Number(r?.low) || 0,
-          close: Number(r?.close) || 0,
-          volume: Number(r?.volume) || 0,
-        })).filter((r) => r.date && r.close > 0);
-        setOhlcv(rows.length > 0 ? rows : null);
-        setOhlcvError(null);
-      })
-      .catch((e) => {
-        if (e?.name !== "AbortError") {
-          setOhlcv(null);
-          setOhlcvError(e?.message ?? "Failed to load chart data");
-        }
-      })
-      .finally(() => setOhlcvLoading(false));
-    return () => ctrl.abort();
-  }, [tab, ticker, apiBase]);
-
-  const chartData = ohlcv?.map((r) => ({ date: r.date, value: r.close })).filter((d) => d.value > 0) ?? [];
-
-  return (
-    <div style={{
-      background: "rgba(255,255,255,0.03)",
-      border: "1px solid rgba(255,255,255,0.07)",
-      borderRadius: 10,
-      overflow: "hidden",
-      position: "relative",
-      cursor: "default",
-    }}>
-      <div style={{ display: "flex" }}>
-        <button
-          onClick={() => setTab("summary")}
-          style={{
-            flex: 1, padding: "6px 8px", fontSize: 9, fontFamily: "var(--mono)", cursor: "pointer",
-            border: "none", borderBottom: tab === "summary" ? "none" : "1px solid rgba(255,255,255,0.07)",
-            borderRight: tab === "summary" ? "1px solid rgba(255,255,255,0.07)" : "none",
-            background: tab === "summary" ? "transparent" : "rgba(255,255,255,0.04)",
-            color: tab === "summary" ? "#ccc" : "#555",
-          }}
-        >
-          Summary
-        </button>
-        <button
-          onClick={() => setTab("chart")}
-          style={{
-            flex: 1, padding: "6px 8px", fontSize: 9, fontFamily: "var(--mono)", cursor: "pointer",
-            border: "none", borderBottom: tab === "chart" ? "none" : "1px solid rgba(255,255,255,0.07)",
-            borderLeft: tab === "chart" ? "1px solid rgba(255,255,255,0.07)" : "none",
-            background: tab === "chart" ? "transparent" : "rgba(255,255,255,0.04)",
-            color: tab === "chart" ? "#ccc" : "#555",
-          }}
-        >
-          Chart
-        </button>
-      </div>
-      <div style={{ padding: "10px 12px", height: 85 }}>
-        {tab === "summary" ? (
-          <>
-            <div style={{ fontSize: 9, letterSpacing: "0.1em", color: "#888", textTransform: "uppercase", marginBottom: 3, fontFamily: "var(--mono)" }}>{ticker}</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#f0f0f0", fontFamily: "var(--display)", lineHeight: 1 }}>{val}</div>
-            <div style={{ fontSize: 10, color: "#888", marginTop: 6, fontFamily: "var(--mono)" }}>
-              {amountDisplay != null ? `${amountDisplay} shares` : "— shares"}
-              {entryDisplay && ` ${entryDisplay}`}
-              {pnlPct != null && (
-                <span style={{ color: parseFloat(pnlPct) >= 0 ? "#00ff94" : "#ff6b6b", marginLeft: 6 }}>{parseFloat(pnlPct) >= 0 ? "+" : ""}{pnlPct}%</span>
-              )}
-            </div>
-            {!amountDisplay && !entryDisplay && (
-              <div style={{ fontSize: 9, color: "#555", marginTop: 4, fontFamily: "var(--mono)" }}>Edit in Memory → Portfolio</div>
-            )}
-          </>
-        ) : (
-          ohlcvLoading ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 9, color: "#666", fontFamily: "var(--mono)", letterSpacing: "0.08em" }}>{ticker}</span>
-              <span style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)" }}>Loading…</span>
-            </div>
-          ) : ohlcvError ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 9, color: "#666", fontFamily: "var(--mono)", letterSpacing: "0.08em" }}>{ticker}</span>
-                <span style={{ fontSize: 10, color: "#ff6b6b", fontFamily: "var(--mono)" }}>{ohlcvError}</span>
-              </div>
-              <button
-                onClick={async () => {
-                  if (ticker === "—" || ohlcvLoading) return;
-                  setOhlcvError(null);
-                  setOhlcvLoading(true);
-                  try {
-                    const r = await fetch(`${apiBase}/ohlcv/refresh/${ticker}`, { method: "POST" });
-                    const data = await r.json() as { error?: string; detail?: string };
-                    if (!r.ok) throw new Error(data?.detail ?? data?.error ?? `HTTP ${r.status}`);
-                    const res = await fetch(`${apiBase}/ohlcv/${ticker}?days=30`);
-                    const rows = await res.json();
-                    setOhlcv(Array.isArray(rows) && rows.length > 0 ? rows : null);
-                    if (!Array.isArray(rows) || rows.length === 0) setOhlcvError("No data after refresh");
-                  } catch (e) {
-                    setOhlcvError(e instanceof Error ? e.message : "Refresh failed");
-                  } finally {
-                    setOhlcvLoading(false);
-                  }
-                }}
-                disabled={ohlcvLoading}
-                style={{ fontSize: 9, padding: "4px 10px", alignSelf: "flex-start", background: "rgba(0,255,148,0.1)", border: "1px solid rgba(0,255,148,0.3)", borderRadius: 6, color: "#00ff94", cursor: "pointer", fontFamily: "var(--mono)" }}
-              >
-                {ohlcvLoading ? "Fetching…" : "Refresh from API"}
-              </button>
-            </div>
-          ) : chartData.length > 0 ? (
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 6, height: 80, marginTop: -4 }}>
-              <div style={{ flexShrink: 0, paddingTop: 2 }}>
-                <span style={{ fontSize: 9, color: "#666", fontFamily: "var(--mono)", letterSpacing: "0.08em" }}>{ticker}</span>
-              </div>
-              <div style={{ flex: 1, minWidth: 60, width: "100%" }}>
-              <ResponsiveContainer width="100%" height={80}>
-                <LineChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
-                  <XAxis dataKey="date" tick={{ fontSize: 8, fill: "#555" }} stroke="#333" interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 8, fill: "#555" }} stroke="#333" tickFormatter={(v) => `$${v}`} domain={["auto", "auto"]} width={28} />
-                  <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 6, fontSize: 10 }} formatter={(v: number) => [`$${v.toFixed(2)}`, "Close"]} />
-                  <Line type="monotone" dataKey="value" stroke="#00ff94" strokeWidth={1.5} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 9, color: "#666", fontFamily: "var(--mono)", letterSpacing: "0.08em", flexShrink: 0 }}>{ticker}</span>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
-              <span style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)" }}>No 30-day data. Try refresh (takes ~15s).</span>
-              <button
-                onClick={async () => {
-                  if (ticker === "—" || ohlcvLoading) return;
-                  setOhlcvError(null);
-                  setOhlcvLoading(true);
-                  try {
-                    const r = await fetch(`${apiBase}/ohlcv/refresh/${ticker}`, { method: "POST" });
-                    const data = await r.json() as { error?: string; detail?: string };
-                    if (!r.ok) throw new Error(data?.detail ?? data?.error ?? `HTTP ${r.status}`);
-                    const res = await fetch(`${apiBase}/ohlcv/${ticker}?days=30`);
-                    const rows = await res.json();
-                    const arr = Array.isArray(rows) ? rows : [];
-                    setOhlcv(arr.length > 0 ? arr : null);
-                    if (arr.length === 0) setOhlcvError("No data returned");
-                  } catch (e) {
-                    setOhlcvError(e instanceof Error ? e.message : "Refresh failed");
-                  } finally {
-                    setOhlcvLoading(false);
-                  }
-                }}
-                disabled={ohlcvLoading}
-                style={{ fontSize: 9, padding: "4px 10px", background: "rgba(0,255,148,0.1)", border: "1px solid rgba(0,255,148,0.3)", borderRadius: 6, color: "#00ff94", cursor: "pointer", fontFamily: "var(--mono)" }}
-              >
-                {ohlcvLoading ? "Fetching… (~15s)" : "Refresh from API"}
-              </button>
-              </div>
-            </div>
-          )
-        )}
-      </div>
-    </div>
-  );
-}
-
-const DASHBOARD_POLL_MS = 60 * 1000; // 1 min
-
-
 function memorySection(key: string): "portfolio" | "preferences" | "context" {
   if (key.startsWith("position_") || key === "positions" || key === "watchlist") return "portfolio";
   if (key === "risk_tolerance" || key === "signals_preference" || key.startsWith("pref_")) return "preferences";
@@ -343,10 +78,6 @@ function parseMemoryValue(value: string): unknown {
     return value;
   }
 }
-
-const MEMORY_SECTIONS = ["portfolio", "preferences", "context"] as const;
-const RISK_OPTIONS = ["conservative", "moderate", "aggressive"];
-const SIGNALS_OPTIONS = ["daily", "weekly", "on_demand"];
 
 function MemoryTab({
   memories,
