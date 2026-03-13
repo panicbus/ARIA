@@ -5,10 +5,12 @@
 
 import { Router, Request, Response } from "express";
 
-type BriefingRow = { id: number; content: string; created_at: string };
+type BriefingRow = { id: number; content: string; created_at: string; type: "morning" | "evening" };
 
 type DbContext = {
+  db: import("sql.js").Database;
   execAll: <T extends Record<string, unknown>>(sql: string) => T[];
+  saveDb: () => void;
   generateBriefing: () => Promise<BriefingRow | null>;
   generateEveningBriefing: () => Promise<BriefingRow | null>;
   sendBriefingEmail: (content: string, subject: string) => Promise<boolean>;
@@ -16,13 +18,19 @@ type DbContext = {
 
 export function createBriefingsRouter(ctx: DbContext): Router {
   const router = Router();
-  const { execAll, generateBriefing, generateEveningBriefing, sendBriefingEmail } = ctx;
+  const { db, execAll, saveDb, generateBriefing, generateEveningBriefing, sendBriefingEmail } = ctx;
 
   router.get("/", (req: Request, res: Response) => {
     const briefings = execAll<BriefingRow>(
-      "SELECT id, content, created_at FROM briefings ORDER BY created_at DESC LIMIT 5"
+      "SELECT id, content, created_at, type FROM briefings ORDER BY created_at DESC LIMIT 30"
     );
     res.json(briefings);
+  });
+
+  router.delete("/", (req: Request, res: Response) => {
+    db.run("DELETE FROM briefings");
+    saveDb();
+    res.json({ cleared: true });
   });
 
   router.post("/generate", async (req: Request, res: Response) => {

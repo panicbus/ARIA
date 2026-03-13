@@ -6,6 +6,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
+    "predev": "lsof -ti:3001 | xargs kill -9 2>/dev/null || true",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "vite",
     "server": "ts-node-dev --respawn --transpile-only server/index.ts",

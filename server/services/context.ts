@@ -26,9 +26,12 @@ export function createBuildLiveContext(deps: ContextDeps): () => string {
       "SELECT ticker, signal, reasoning FROM signals ORDER BY created_at DESC LIMIT 10"
     );
 
+    const tz = process.env.TZ || "America/Los_Angeles";
+    const asOf = new Date().toLocaleString("en-US", { timeZone: tz });
+
     return `
 
-LIVE DATA (as of ${new Date().toISOString()}):
+LIVE DATA (as of ${asOf}):
 
 PRICES:
 ${prices
@@ -60,10 +63,14 @@ MEMORY:
 No stored memories yet. Claude can call the 'remember' tool to persist important facts about Nico.`;
     }
 
+    const tz = process.env.TZ || "America/Los_Angeles";
     const lines = memories.map((m) => {
       const conf = m.confidence != null ? ` [confidence ${m.confidence}]` : "";
       const src = m.source ? ` (${m.source})` : "";
-      return `${m.key}: ${m.value}${conf}${src} — updated ${m.updated_at}`;
+      const updated = m.updated_at
+        ? new Date(m.updated_at).toLocaleString("en-US", { timeZone: tz })
+        : "";
+      return `${m.key}: ${m.value}${conf}${src} — updated ${updated}`;
     }).join("\n");
     return `
 

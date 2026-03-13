@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { API } from "../../config";
 import { signalColors } from "../../config";
 import type { ScannerResult, ScannerStatus } from "../../types";
@@ -34,6 +34,19 @@ export function ScannerTab({
   const [fullResultsOpen, setFullResultsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingTicker, setAddingTicker] = useState<string | null>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const infoRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!infoOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (infoRef.current && !infoRef.current.contains(e.target as Node)) {
+        setInfoOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [infoOpen]);
 
   const load = () => {
     fetch(`${API}/scanner/results`)
@@ -92,25 +105,82 @@ export function ScannerTab({
   const allFiltered = filterResults(results, filter);
   const apiLimitReached = status != null && status.apiCallsRemaining <= 0;
 
-  return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ fontSize: 12, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 4 }}>
-        SCANNER
-      </div>
-      <p style={{ fontSize: 11, color: "#666", fontFamily: "var(--mono)", marginBottom: 12 }}>
-        Discovery beyond your portfolio — ARIA surfaces opportunities worth watching. Not financial advice.
+  const metricsExplainer = (
+    <div style={{ padding: 12, maxWidth: 340 }}>
+      <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 10, color: "#00ff94", fontFamily: "var(--mono)" }}>What do these mean?</div>
+      <p style={{ fontSize: 18, lineHeight: 1.55, color: "#aaa", marginBottom: 10, fontFamily: "var(--body)" }}>
+        <strong style={{ color: "#00ff94" }}>STRONG BUY</strong> — A bunch of indicators agree this might be a good time to look. We combine RSI (Relative Strength Index—tells you if a stock is overbought or oversold), MACD (Moving Average Convergence Divergence—a momentum indicator), and where the price sits vs its recent averages. When most of those line up in a positive way, we call it a strong buy.
       </p>
+      <p style={{ fontSize: 18, lineHeight: 1.55, color: "#aaa", marginBottom: 10, fontFamily: "var(--body)" }}>
+        <strong style={{ color: "#00ff94" }}>BUY</strong> — Some signs look good, but not everything’s aligned. Worth keeping an eye on—maybe do a bit more research before jumping in.
+      </p>
+      <p style={{ fontSize: 18, lineHeight: 1.55, color: "#aaa", marginBottom: 0, fontFamily: "var(--body)" }}>
+        <strong style={{ color: "#a29bfe" }}>UNUSUAL MOVE</strong> — Something’s going on: the stock moved a lot in 24 hours, or its RSI is in an extreme zone (below 30 = oversold, above 70 = overbought). Not necessarily good or bad—just something worth noticing before you decide.
+      </p>
+    </div>
+  );
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16, position: "relative" }}>
+      <div ref={infoRef} style={{ position: "relative" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 24 }}>
+              SCANNER
+            </div>
+            <p style={{ fontSize: 15, color: "#666", fontFamily: "var(--mono)", marginBottom: 12 }}>
+              Discovery beyond your portfolio — ARIA surfaces opportunities worth watching. Not financial advice.
+            </p>
+          </div>
+          <button
+            onClick={() => setInfoOpen((o) => !o)}
+            style={{
+              flexShrink: 0,
+              width: 24,
+              height: 24,
+              borderRadius: "50%",
+              border: "1px solid rgba(255,255,255,0.2)",
+              background: "rgba(255,255,255,0.04)",
+              color: "#666",
+              fontSize: 18,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            title="How signals are determined"
+          >
+            ⓘ
+          </button>
+        </div>
+        {infoOpen && (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              zIndex: 20,
+              background: "#141414",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: 12,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+            }}
+          >
+            {metricsExplainer}
+          </div>
+        )}
+      </div>
 
       {/* Header row */}
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 8 }}>
-        <span style={{ fontSize: 11, color: "#666", fontFamily: "var(--mono)" }}>
+        <span style={{ fontSize: 15, color: "#666", fontFamily: "var(--mono)" }}>
           {status?.lastScan ? `Last scanned: ${new Date(status.lastScan).toLocaleString()}` : "No scan yet"}
         </span>
         <button
           onClick={runScan}
           disabled={scanning || status?.scanning}
           style={{
-            fontSize: 11,
+            fontSize: 15,
             fontFamily: "var(--mono)",
             padding: "5px 12px",
             borderRadius: 16,
@@ -141,7 +211,7 @@ export function ScannerTab({
             "Scan Now"
           )}
         </button>
-        <span style={{ fontSize: 11, color: "#666", fontFamily: "var(--mono)" }}>
+        <span style={{ fontSize: 15, color: "#666", fontFamily: "var(--mono)" }}>
           Watching {status?.universeSize ?? 0} stocks
         </span>
         <div style={{ display: "flex", gap: 4 }}>
@@ -150,7 +220,7 @@ export function ScannerTab({
               key={p}
               onClick={() => setFilter(p)}
               style={{
-                fontSize: 10,
+                fontSize: 14,
                 fontFamily: "var(--mono)",
                 padding: "3px 10px",
                 borderRadius: 12,
@@ -173,7 +243,7 @@ export function ScannerTab({
             background: "rgba(255,212,42,0.1)",
             border: "1px solid rgba(255,212,42,0.3)",
             borderRadius: 8,
-            fontSize: 12,
+            fontSize: 16,
             color: "#ffd32a",
             fontFamily: "var(--mono)",
           }}
@@ -189,7 +259,7 @@ export function ScannerTab({
             background: "rgba(255,71,87,0.1)",
             border: "1px solid rgba(255,71,87,0.3)",
             borderRadius: 8,
-            fontSize: 12,
+            fontSize: 16,
             color: "#ff6b6b",
             fontFamily: "var(--mono)",
           }}
@@ -204,7 +274,7 @@ export function ScannerTab({
             padding: 32,
             textAlign: "center",
             color: "#555",
-            fontSize: 13,
+            fontSize: 17,
             fontFamily: "var(--body)",
             background: "rgba(255,255,255,0.02)",
             border: "1px dashed rgba(255,255,255,0.08)",
@@ -219,7 +289,7 @@ export function ScannerTab({
 
       {topPicks.length > 0 && (
         <>
-          <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "#00ff94", fontFamily: "var(--mono)", marginTop: 8 }}>
+          <div style={{ fontSize: 15, letterSpacing: "0.1em", color: "#00ff94", fontFamily: "var(--mono)", marginTop: 8 }}>
             ARIA&apos;S TOP PICKS TODAY
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -238,7 +308,7 @@ export function ScannerTab({
                     <span style={{ fontFamily: "var(--display)", fontWeight: 700, color: "#f0f0f0" }}>{r.symbol}</span>
                     <span
                       style={{
-                        fontSize: 9,
+                        fontSize: 13,
                         fontFamily: "var(--mono)",
                         padding: "2px 6px",
                         borderRadius: 4,
@@ -250,7 +320,7 @@ export function ScannerTab({
                     </span>
                     <span
                       style={{
-                        fontSize: 11,
+                        fontSize: 15,
                         fontFamily: "var(--mono)",
                         padding: "2px 8px",
                         borderRadius: 20,
@@ -263,7 +333,7 @@ export function ScannerTab({
                     </span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ fontSize: 12, fontFamily: "var(--mono)", color: "#ccc" }}>
+                    <span style={{ fontSize: 16, fontFamily: "var(--mono)", color: "#ccc" }}>
                       ${Number(r.price).toLocaleString()}
                       {r.change_24h != null && (
                         <span style={{ color: r.change_24h >= 0 ? "#00ff94" : "#ff4757", marginLeft: 6 }}>
@@ -273,7 +343,7 @@ export function ScannerTab({
                     </span>
                   </div>
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 8, fontSize: 11, fontFamily: "var(--mono)" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 8, fontSize: 15, fontFamily: "var(--mono)" }}>
                   <span style={{ color: "#00ff94" }}>
                     Score {r.score > 0 ? "+" : ""}{r.score}/6
                   </span>
@@ -297,7 +367,7 @@ export function ScannerTab({
                     }}
                   />
                 </div>
-                <div style={{ fontSize: 12, color: "#aaa", lineHeight: 1.5, marginBottom: 12, fontFamily: "var(--body)" }}>
+                <div style={{ fontSize: 16, color: "#aaa", lineHeight: 1.5, marginBottom: 12, fontFamily: "var(--body)" }}>
                   {r.aria_reasoning}
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -305,7 +375,7 @@ export function ScannerTab({
                     onClick={() => addToWatchlist(r.symbol)}
                     disabled={addingTicker === r.symbol}
                     style={{
-                      fontSize: 11,
+                      fontSize: 15,
                       fontFamily: "var(--mono)",
                       padding: "5px 12px",
                       borderRadius: 8,
@@ -320,7 +390,7 @@ export function ScannerTab({
                   <button
                     onClick={() => onViewBacktest?.(r.symbol)}
                     style={{
-                      fontSize: 11,
+                      fontSize: 15,
                       fontFamily: "var(--mono)",
                       padding: "5px 12px",
                       borderRadius: 8,
@@ -353,7 +423,7 @@ export function ScannerTab({
               background: "none",
               border: "none",
               color: "#666",
-              fontSize: 11,
+              fontSize: 15,
               fontFamily: "var(--mono)",
               cursor: "pointer",
               textAlign: "left",
@@ -363,7 +433,7 @@ export function ScannerTab({
           </button>
           {fullResultsOpen && (
             <div style={{ overflowX: "auto", marginTop: 8 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "var(--mono)" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 15, fontFamily: "var(--mono)" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.15)" }}>
                     <th style={{ textAlign: "left", padding: "6px 10px", color: "#555" }}>Ticker</th>
@@ -386,7 +456,7 @@ export function ScannerTab({
                             borderRadius: 4,
                             background: `${(signalColors[r.signal] ?? "#888")}18`,
                             color: signalColors[r.signal] ?? "#888",
-                            fontSize: 10,
+                            fontSize: 14,
                           }}
                         >
                           {r.signal}

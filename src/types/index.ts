@@ -57,6 +57,7 @@ export type Briefing = {
   id: number;
   content: string;
   created_at: string;
+  type?: "morning" | "evening";
 };
 
 export type Memory = {

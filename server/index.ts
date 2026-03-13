@@ -190,7 +190,8 @@ async function start() {
     CREATE TABLE IF NOT EXISTS briefings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       content TEXT NOT NULL,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'morning'
     );
 
     CREATE TABLE IF NOT EXISTS memories (
@@ -254,6 +255,19 @@ async function start() {
   alter("ALTER TABLE memories ADD COLUMN confidence REAL DEFAULT 1");
   alter("ALTER TABLE memories ADD COLUMN source TEXT");
   alter("ALTER TABLE memories ADD COLUMN created_at TEXT");
+  alter("ALTER TABLE briefings ADD COLUMN type TEXT NOT NULL DEFAULT 'morning'");
+  // Backfill type from created_at (Pacific: hour < 12 = morning, else evening)
+  const pacificHour = (iso: string) =>
+    parseInt(new Date(iso).toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false }), 10);
+  try {
+    const rows = execAll<{ id: number; created_at: string }>("SELECT id, created_at FROM briefings");
+    for (const r of rows) {
+      const hour = pacificHour(r.created_at);
+      const typ = hour < 12 ? "morning" : "evening";
+      db.run("UPDATE briefings SET type = :t WHERE id = :id", { ":t": typ, ":id": r.id });
+    }
+    if (rows.length) saveDb();
+  } catch (_) {}
   saveDb();
 
   const buildLiveContext = createBuildLiveContext({ execAll });
@@ -322,7 +336,7 @@ async function start() {
   app.use("/api", createHealthRouter(anthropic));
   app.use("/api", createDashboardRouter({ execAll, getWatchedTickers, getRiskContextForTicker }));
   app.use("/api/signals", createSignalsRouter({ execAll, run, saveDb, getRiskContextForTicker }));
-  app.use("/api/briefings", createBriefingsRouter({ execAll, generateBriefing, generateEveningBriefing, sendBriefingEmail }));
+  app.use("/api/briefings", createBriefingsRouter({ db, execAll, saveDb, generateBriefing, generateEveningBriefing, sendBriefingEmail }));
   app.use("/api/backtest", createBacktestRouter({ getWatchedTickers, runBacktest }));
   app.use("/api", createChatRouter({
     db,

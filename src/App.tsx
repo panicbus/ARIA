@@ -5,16 +5,16 @@ import { TypingIndicator } from "./components/ui/TypingIndicator";
 import { StatusDot } from "./components/ui/StatusDot";
 import { MetricCard } from "./components/ui/MetricCard";
 import { BacktestTab } from "./components/tabs/BacktestTab";
+import { BriefingTab } from "./components/tabs/BriefingTab";
 import { MemoryTab } from "./components/tabs/MemoryTab";
 import { ScannerTab } from "./components/tabs/ScannerTab";
 import { ChatMessage } from "./components/chat/ChatMessage";
-import { MarkdownContent } from "./components/chat/MarkdownContent";
 import { HoldingsAccordion } from "./components/sidebar/HoldingsAccordion";
 import { MarketPulseAccordion } from "./components/sidebar/MarketPulseAccordion";
 import { TechNewsList } from "./components/sidebar/TechNewsList";
 import { BuildPhaseList } from "./components/sidebar/BuildPhaseList";
 import { API, SUGGESTED_PROMPTS, FALLBACK_TICKERS, DASHBOARD_POLL_MS, signalColors } from "./config";
-import type { Message, Signal, Dashboard, Memory, Briefing } from "./types";
+import type { Message, Signal, Dashboard, Memory } from "./types";
 
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -47,9 +47,6 @@ export default function App() {
   }, [resizing]);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [signals, setSignals] = useState<Signal[]>([]);
-  const [briefings, setBriefings] = useState<Briefing[]>([]);
-  const [briefingGenerating, setBriefingGenerating] = useState(false);
-  const [briefingError, setBriefingError] = useState<string | null>(null);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [holdingsOpen, setHoldingsOpen] = useState(false);
   const [ohlcvRefreshAll, setOhlcvRefreshAll] = useState(false);
@@ -112,14 +109,6 @@ export default function App() {
     load();
     const t = setInterval(load, DASHBOARD_POLL_MS);
     return () => clearInterval(t);
-  }, []);
-
-  // Briefings list (Phase 3)
-  useEffect(() => {
-    fetch(`${API}/briefings`)
-      .then(r => r.json())
-      .then((data: Briefing[]) => setBriefings(data))
-      .catch(() => setBriefings([]));
   }, []);
 
   // Memories list (Phase 3) — refresh when Memory tab is active or on interval
@@ -194,55 +183,6 @@ export default function App() {
       });
       loadMemories();
     } catch (_) {}
-  };
-
-  const generateBriefingNow = async () => {
-    if (briefingGenerating) return;
-    setBriefingGenerating(true);
-    setBriefingError(null);
-    try {
-      const res = await fetch(`${API}/briefings/generate`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        setBriefingError((data?.error ?? "Request failed") + (data?.detail ? `: ${data.detail}` : ""));
-        return;
-      }
-      const generated = data as Briefing;
-      if (generated?.id) {
-        setBriefings((prev) => [generated, ...prev.filter((b) => b.id !== generated.id)].slice(0, 5));
-      } else {
-        setBriefingError("Briefing generated but invalid response format.");
-      }
-    } catch (e) {
-      setBriefingError(e instanceof Error ? e.message : "Network error. Is the server running on port 3001?");
-    } finally {
-      setBriefingGenerating(false);
-    }
-  };
-
-  const generateEveningBriefingNow = async () => {
-    if (briefingGenerating) return;
-    setBriefingGenerating(true);
-    setBriefingError(null);
-    try {
-      const res = await fetch(`${API}/briefings/generate-evening`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        setBriefingError((data?.error ?? "Request failed") + (data?.detail ? `: ${data.detail}` : ""));
-        return;
-      }
-      const generated = data as Briefing & { email_sent?: boolean };
-      if (generated?.id) {
-        setBriefings((prev) => [generated, ...prev.filter((b) => b.id !== generated.id)].slice(0, 5));
-        if (generated.email_sent) setBriefingError(null); // Clear any prior error; show success via the new briefing
-      } else {
-        setBriefingError("Evening briefing failed.");
-      }
-    } catch (e) {
-      setBriefingError(e instanceof Error ? e.message : "Network error.");
-    } finally {
-      setBriefingGenerating(false);
-    }
   };
 
   return (
@@ -406,78 +346,7 @@ export default function App() {
                 preselectedTicker={activeTab === "backtest" ? backtestPreselectedTicker : null}
               />
             ) : activeTab === "briefing" ? (
-              <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-                <div style={{ fontSize: 12, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 4 }}>BRIEFINGS</div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 11, color: "#666", fontFamily: "var(--mono)" }}>
-                    {briefings[0] ? `Latest: ${new Date(briefings[0].created_at).toLocaleString()}` : "No briefing generated yet"}
-                  </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    {briefingGenerating && (
-                      <div style={{
-                        width: 14, height: 14, border: "2px solid rgba(0,255,148,0.3)", borderTopColor: "#00ff94", borderRadius: "50%",
-                        animation: "spin 0.7s linear infinite",
-                      }} />
-                    )}
-                    <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      onClick={generateBriefingNow}
-                      disabled={briefingGenerating}
-                      style={{
-                        fontSize: 11,
-                        fontFamily: "var(--mono)",
-                        padding: "5px 10px",
-                        borderRadius: 16,
-                        border: "1px solid rgba(0,255,148,0.4)",
-                        background: briefingGenerating ? "rgba(0,255,148,0.05)" : "transparent",
-                        color: "#00ff94",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {briefingGenerating ? "Generating…" : "Morning"}
-                    </button>
-                    <button
-                      onClick={generateEveningBriefingNow}
-                      disabled={briefingGenerating}
-                      style={{
-                        fontSize: 11,
-                        fontFamily: "var(--mono)",
-                        padding: "5px 10px",
-                        borderRadius: 16,
-                        border: "1px solid rgba(0,255,148,0.4)",
-                        background: briefingGenerating ? "rgba(0,255,148,0.05)" : "transparent",
-                        color: "#00ff94",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Evening (6pm)
-                    </button>
-                    </div>
-                  </div>
-                </div>
-                {briefingError && (
-                  <div style={{ padding: "10px 14px", background: "rgba(255,71,87,0.1)", border: "1px solid rgba(255,71,87,0.3)", borderRadius: 8, fontSize: 12, color: "#ff6b6b", fontFamily: "var(--mono)" }}>
-                    {briefingError}
-                  </div>
-                )}
-                {briefings[0] && (
-                  <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "16px 18px", fontSize: 13, lineHeight: 1.6, color: "#ccc", fontFamily: "var(--body)" }}>
-                    <MarkdownContent content={briefings[0].content} />
-                  </div>
-                )}
-                {briefings.length > 1 && (
-                  <div style={{ marginTop: 16 }}>
-                    <div style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)", marginBottom: 6 }}>PREVIOUS BRIEFINGS</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {briefings.slice(1, 5).map((b) => (
-                        <div key={b.id} style={{ fontSize: 11, color: "#666", fontFamily: "var(--mono)" }}>
-                          {new Date(b.created_at).toLocaleString()}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <BriefingTab />
             ) : activeTab === "memory" ? (
               <MemoryTab memories={memories} onRefresh={loadMemories} onDelete={deleteMemory} />
             ) : (

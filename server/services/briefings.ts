@@ -4,7 +4,7 @@
 
 import nodemailer from "nodemailer";
 
-type BriefingRow = { id: number; content: string; created_at: string };
+type BriefingRow = { id: number; content: string; created_at: string; type: "morning" | "evening" };
 
 async function tavilySearch(query: string, maxResults = 5): Promise<Array<{ title: string; url: string; content: string }>> {
   const key = process.env.TAVILY_API_KEY?.trim();
@@ -135,14 +135,15 @@ ${memoryContext}
     if (!content) return null;
 
     const created_at = new Date().toISOString();
-    const result = run("INSERT INTO briefings (content, created_at) VALUES (:content, :created_at)", {
+    const result = run("INSERT INTO briefings (content, created_at, type) VALUES (:content, :created_at, :type)", {
       ":content": content,
       ":created_at": created_at,
+      ":type": "morning",
     });
     saveDb();
 
     const rows = execAll<BriefingRow>(
-      `SELECT id, content, created_at FROM briefings WHERE id = ${result.lastInsertRowid} LIMIT 1`
+      `SELECT id, content, created_at, type FROM briefings WHERE id = ${result.lastInsertRowid} LIMIT 1`
     );
     return rows[0] ?? null;
   }
@@ -212,14 +213,15 @@ ${memoryContext}
     if (!content) return null;
 
     const created_at = new Date().toISOString();
-    const result = run("INSERT INTO briefings (content, created_at) VALUES (:content, :created_at)", {
+    const result = run("INSERT INTO briefings (content, created_at, type) VALUES (:content, :created_at, :type)", {
       ":content": content,
       ":created_at": created_at,
+      ":type": "evening",
     });
     saveDb();
 
     const rows = execAll<BriefingRow>(
-      `SELECT id, content, created_at FROM briefings WHERE id = ${result.lastInsertRowid} LIMIT 1`
+      `SELECT id, content, created_at, type FROM briefings WHERE id = ${result.lastInsertRowid} LIMIT 1`
     );
     return rows[0] ?? null;
   }
