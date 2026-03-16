@@ -59,6 +59,7 @@ export default function App() {
   const [ohlcvRefreshAll, setOhlcvRefreshAll] = useState(false);
   const [marketPulseOpen, setMarketPulseOpen] = useState(true);
   const [backtestPreselectedTicker, setBacktestPreselectedTicker] = useState<string | null>(null);
+  const [quickMode, setQuickMode] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -150,7 +151,7 @@ export default function App() {
       const res = await fetch(`${API}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText }),
+        body: JSON.stringify({ message: userText, quick: quickMode }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -389,10 +390,30 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => setQuickMode((q) => !q)}
+                  title="Brief answers without fetching data (faster)"
+                  style={{
+                    fontSize: 11,
+                    padding: "6px 14px",
+                    borderRadius: 20,
+                    border: quickMode ? "1px solid rgba(0,255,148,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                    background: quickMode ? "rgba(0,255,148,0.2)" : "rgba(255,255,255,0.04)",
+                    color: quickMode ? "#00ff94" : "#777",
+                    cursor: "pointer",
+                    fontFamily: "var(--mono)",
+                    fontWeight: quickMode ? 600 : 400,
+                    transition: "all 0.15s",
+                    flexShrink: 0,
+                  }}
+                >
+                  Quick
+                </button>
                 <textarea
                   ref={textareaRef}
-                  style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 11, padding: "11px 15px", color: "#f0f0f0", fontSize: 14, outline: "none", fontFamily: "var(--body)", resize: "none", minHeight: 44, overflow: "hidden" }}
+                  style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 11, padding: "11px 15px", color: "#f0f0f0", fontSize: 14, outline: "none", fontFamily: "var(--body)", resize: "none", minHeight: 44, height: 44, boxSizing: "border-box", overflow: "hidden" }}
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={e => {
@@ -409,7 +430,7 @@ export default function App() {
                 <button
                   onClick={() => sendMessage()}
                   disabled={loading || !input.trim()}
-                  style={{ background: "linear-gradient(135deg, #00ff94, #00d4aa)", border: "none", borderRadius: 10, padding: "11px 20px", color: "#0a0a0a", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--display)", letterSpacing: "0.05em", opacity: loading || !input.trim() ? 0.4 : 1, transition: "opacity 0.2s" }}
+                  style={{ background: "linear-gradient(135deg, #00ff94, #00d4aa)", border: "none", borderRadius: 10, height: 44, padding: "0 20px", margin: 0, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#0a0a0a", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--display)", letterSpacing: "0.05em", opacity: loading || !input.trim() ? 0.4 : 1, transition: "opacity 0.2s", flexShrink: 0, boxSizing: "border-box" }}
                 >
                   SEND
                 </button>

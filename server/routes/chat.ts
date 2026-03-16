@@ -36,8 +36,9 @@ export function createChatRouter(deps: ChatDeps): Router {
   } = deps;
 
   router.post("/chat", async (req: Request, res: Response) => {
-    const { message } = req.body;
+    const { message, quick } = req.body;
     if (!message) return res.status(400).json({ error: "Message required" });
+    const useQuickMode = quick === true;
 
     db.run("INSERT INTO messages (role, content) VALUES (:role, :content)", {
       ":role": "user",
@@ -61,12 +62,13 @@ export function createChatRouter(deps: ChatDeps): Router {
       }));
 
       let currentMessages: any[] = [...baseMessages];
+      const toolChoice = useQuickMode ? { type: "none" as const } : { type: "auto" as const };
       let finalResponse: any = await anthropic.messages.create({
         model: "claude-sonnet-4-5",
-        max_tokens: 4096,
+        max_tokens: useQuickMode ? 512 : 4096,
         system: fullSystemPrompt,
         tools,
-        tool_choice: { type: "auto" },
+        tool_choice: toolChoice,
         messages: currentMessages,
       } as any);
 
@@ -74,11 +76,15 @@ export function createChatRouter(deps: ChatDeps): Router {
         const toolUses = (finalResponse.content as any[]).filter((c: any) => c.type === "tool_use");
         if (toolUses.length === 0) break;
 
-        const toolResultBlocks: Array<{ type: "tool_result"; tool_use_id: string; content: string }> = [];
-        for (const tu of toolUses as Array<{ id: string; name: string; input: any }>) {
-          const result = await handleToolCall(tu.name, tu.input);
-          toolResultBlocks.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(result) });
-        }
+        const toolUsesTyped = toolUses as Array<{ id: string; name: string; input: any }>;
+        const results = await Promise.all(
+          toolUsesTyped.map((tu) => handleToolCall(tu.name, tu.input).then((result) => ({ id: tu.id, content: JSON.stringify(result) })))
+        );
+        const toolResultBlocks: Array<{ type: "tool_result"; tool_use_id: string; content: string }> = results.map((r) => ({
+          type: "tool_result",
+          tool_use_id: r.id,
+          content: r.content,
+        }));
         currentMessages = [
           ...currentMessages,
           { role: "assistant", content: finalResponse.content },
