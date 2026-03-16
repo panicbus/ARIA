@@ -106,7 +106,7 @@ ACTION: [specific next step if applicable]`;
 
 // ── Live data (prices, news, signals) ──────────────────────────────────────────
 // Base tickers always fetched. Memory watchlist (Portfolio tab) adds more — no code change needed.
-const BASE_TICKERS = ["BTC", "ETH", "AMD", "AMZN", "CLS"];
+const BASE_TICKERS = ["SPY", "BTC", "ETH", "AMD", "AMZN", "CLS"];
 const CRYPTO_COINGECKO_IDS: Record<string, string> = { BTC: "bitcoin", ETH: "ethereum" };
 
 // WAYPOINT [getWatchedTickers]

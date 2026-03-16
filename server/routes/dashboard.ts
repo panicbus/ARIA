@@ -1,6 +1,7 @@
 /**
  * Dashboard API routes.
  * GET /prices — latest prices; GET /news — HN headlines; GET /dashboard — aggregate (prices + news + signals).
+ * GET /dashboard/market-pulse — dynamic ticker list for sidebar (market context + holdings + watchlist).
  */
 
 import { Router, Request, Response } from "express";
@@ -22,6 +23,66 @@ type DbContext = {
   getRiskContextForTicker: (ticker: string, signal?: string, indicatorData?: { score?: number } | null) => RiskContext;
 };
 
+type MarketPulseEntry = { ticker: string; category: "market_context" | "holding" | "watchlist" };
+
+// WAYPOINT: Market Pulse Dynamic Tickers
+// WHAT: Builds the market pulse ticker list from memory (position_*, watchlist_core, watchlist_speculative).
+// WHY: Sidebar should always reflect current portfolio and watchlist.
+// HOW IT HELPS NICO: No manual updates needed when positions or watchlist change via chat.
+function buildMarketPulseTickers(execAll: DbContext["execAll"]): MarketPulseEntry[] {
+  const MARKET_CONTEXT = ["SPY", "BTC", "ETH"];
+  const seen = new Set<string>(MARKET_CONTEXT);
+  const result: MarketPulseEntry[] = MARKET_CONTEXT.map((t) => ({ ticker: t, category: "market_context" as const }));
+
+  // Holdings from position_*
+  const posRows = execAll<{ key: string; value: string }>("SELECT key, value FROM memories WHERE key LIKE 'position_%'");
+  for (const r of posRows) {
+    try {
+      const t = (JSON.parse(r.value) as { ticker?: string })?.ticker?.toUpperCase();
+      if (t && !seen.has(t)) {
+        seen.add(t);
+        result.push({ ticker: t, category: "holding" });
+      }
+    } catch (_) {}
+  }
+
+  // Watchlist: core first, then speculative, up to 5 total
+  const coreRow = execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist_core' LIMIT 1");
+  const specRow = execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist_speculative' LIMIT 1");
+  let core: string[] = [];
+  let spec: string[] = [];
+  if (coreRow[0]?.value) {
+    try {
+      const parsed = JSON.parse(coreRow[0].value);
+      if (Array.isArray(parsed)) core = parsed.map((x: unknown) => String(x).toUpperCase()).filter(Boolean);
+    } catch (_) {}
+  }
+  if (specRow[0]?.value) {
+    try {
+      const parsed = JSON.parse(specRow[0].value);
+      if (Array.isArray(parsed)) spec = parsed.map((x: unknown) => String(x).toUpperCase()).filter(Boolean);
+    } catch (_) {}
+  }
+  const watchlistAll = [...core, ...spec.filter((t) => !core.includes(t))];
+  // Fallback: legacy watchlist (comma-separated)
+  const watchRow = execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist' LIMIT 1");
+  if (watchRow[0]?.value?.trim()) {
+    const fromWatch = watchRow[0].value.split(/[\s,]+/).map((s) => s.toUpperCase()).filter(Boolean);
+    for (const t of fromWatch) {
+      if (!watchlistAll.includes(t)) watchlistAll.push(t);
+    }
+  }
+  for (const t of watchlistAll) {
+    if (result.filter((e) => e.category === "watchlist").length >= 5) break;
+    if (!seen.has(t)) {
+      seen.add(t);
+      result.push({ ticker: t, category: "watchlist" });
+    }
+  }
+
+  return result.slice(0, 14);
+}
+
 export function createDashboardRouter(ctx: DbContext): Router {
   const router = Router();
   const { execAll, getWatchedTickers, getRiskContextForTicker } = ctx;
@@ -37,10 +98,13 @@ export function createDashboardRouter(ctx: DbContext): Router {
   });
 
   router.get("/dashboard", (req: Request, res: Response) => {
-    const prices = execAll<PriceRow>("SELECT symbol, price, change_24h, source, updated_at FROM prices ORDER BY symbol");
+    const pulseEntries = buildMarketPulseTickers(execAll);
+    const tickers = pulseEntries.map((e) => e.ticker);
+    const allPrices = execAll<PriceRow>("SELECT symbol, price, change_24h, source, updated_at FROM prices ORDER BY symbol");
+    const prices = tickers.length > 0 ? allPrices.filter((p) => tickers.includes(p.symbol)) : allPrices;
     const news = execAll<NewsRow>("SELECT id, title, url, source, created_at FROM news ORDER BY created_at DESC LIMIT 10");
     const signals = execAll<{ ticker: string; signal: string; reasoning: string; price: number; created_at: string; indicator_data: string | null }>(
-      "SELECT ticker, signal, reasoning, price, created_at, indicator_data FROM signals ORDER BY created_at DESC LIMIT 10"
+      "SELECT ticker, signal, reasoning, price, created_at, indicator_data FROM signals ORDER BY created_at DESC LIMIT 50"
     );
     const byTicker = new Map<string, { signal: string; reasoning: string; price: number; indicator_data?: unknown; risk_context: RiskContext }>();
     for (const s of signals) {
@@ -60,7 +124,50 @@ export function createDashboardRouter(ctx: DbContext): Router {
         });
       }
     }
-    res.json({ prices, news, tickers: getWatchedTickers(), signalsByTicker: Object.fromEntries(byTicker) });
+    res.json({ prices, news, tickers: tickers.length > 0 ? tickers : getWatchedTickers(), signalsByTicker: Object.fromEntries(byTicker) });
+  });
+
+  // WAYPOINT: Market Pulse Endpoint
+  // WHAT: Returns dynamic ticker list with prices and signals for the sidebar.
+  // WHY: Sidebar must reflect current portfolio and watchlist from memory.
+  // HOW IT HELPS NICO: Add position via chat → appears in Market Pulse within 60s.
+  router.get("/dashboard/market-pulse", (req: Request, res: Response) => {
+    const entries = buildMarketPulseTickers(execAll);
+    const priceRows = execAll<PriceRow>("SELECT symbol, price, change_24h, source, updated_at FROM prices ORDER BY updated_at DESC");
+    const signalRows = execAll<{ ticker: string; signal: string; indicator_data: string | null }>(
+      "SELECT ticker, signal, indicator_data FROM signals ORDER BY created_at DESC"
+    );
+    const bySymbolPrice = new Map<string, PriceRow>();
+    for (const p of priceRows) {
+      if (!bySymbolPrice.has(p.symbol)) bySymbolPrice.set(p.symbol, p);
+    }
+    const bySymbolSignal = new Map<string, { signal: string; indicator_data: string | null }>();
+    for (const s of signalRows) {
+      if (!bySymbolSignal.has(s.ticker)) bySymbolSignal.set(s.ticker, { signal: s.signal, indicator_data: s.indicator_data });
+    }
+
+    const items = entries.map(({ ticker: sym, category }) => {
+      const p = bySymbolPrice.get(sym);
+      const sig = bySymbolSignal.get(sym);
+      let ind: { score?: number; rsi?: number } | null = null;
+      if (sig?.indicator_data) {
+        try {
+          ind = JSON.parse(sig.indicator_data);
+        } catch (_) {}
+      }
+      return {
+        symbol: sym,
+        category,
+        price: p?.price ?? null,
+        change_24h: p?.change_24h ?? null,
+        signal: sig?.signal ?? null,
+        score: ind?.score ?? null,
+        rsi: ind?.rsi ?? null,
+        updated_at: p?.updated_at ?? null,
+      };
+    });
+
+    res.json(items);
   });
 
   return router;

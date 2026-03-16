@@ -259,7 +259,6 @@ export default function App() {
               }}
             />
             <MarketPulseAccordion
-              dashboard={dashboard}
               open={marketPulseOpen}
               onToggle={() => setMarketPulseOpen((o) => !o)}
             />
