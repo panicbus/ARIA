@@ -190,7 +190,7 @@ export function MemoryTab({
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ fontSize: 12, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)" }}>MEMORY</div>
+        <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)" }}>MEMORY</div>
         <div ref={infoRef} style={{ display: "flex", alignItems: "center", gap: 10, position: "relative" }}>
           <button
             onClick={() => setInfoOpen((o) => !o)}

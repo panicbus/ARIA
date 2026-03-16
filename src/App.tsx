@@ -220,7 +220,7 @@ export default function App() {
               <span style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)" }}>{online ? "SERVER ONLINE" : "SERVER OFFLINE"}</span>
             </div>
             <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 4 }}>
-              {["portfolio", "chat", "signals", "scanner", "backtest", "briefing", "memory"].map(t => (
+              {["chat", "portfolio", "signals", "scanner", "backtest", "briefing", "memory"].map(t => (
                 <button key={t} onClick={() => setActiveTab(t)} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontFamily: "var(--mono)", cursor: "pointer", border: "none", background: activeTab === t ? "rgba(0,255,148,0.12)" : "transparent", color: activeTab === t ? "#00ff94" : "#555", transition: "all 0.2s" }}>
                   {t.toUpperCase()}
                 </button>
@@ -300,7 +300,7 @@ export default function App() {
               />
             ) : activeTab === "signals" ? (
               <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
-                <div style={{ fontSize: 12, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 14 }}>LIVE SIGNALS</div>
+                <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 14 }}>LIVE SIGNALS</div>
                 {signals.length === 0 ? (
                   <div style={{ color: "#555", fontSize: 13, fontFamily: "var(--mono)" }}>No signals yet. Prices refresh every 5m; signals use technical composite (RSI/MACD/MAs) or 24h fallback.</div>
                 ) : (

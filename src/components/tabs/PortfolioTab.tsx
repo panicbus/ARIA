@@ -4,6 +4,24 @@ import { API, DASHBOARD_POLL_MS, signalColors } from "../../config";
 import type { CryptoPortfolioHolding, Dashboard } from "../../types";
 
 const TZ = "America/Los_Angeles";
+
+const INFO_CONTENT = {
+  unrealizedPnl: {
+    term: "Unrealized P&L",
+    def: "The profit or loss you’d have if you sold right now, compared to what you paid.",
+    explain: "It’s called “unrealized” because you haven’t locked it in yet—it’s just on paper. Positive means you’re up; negative means you’re down.",
+  },
+  buyingPower: {
+    term: "Buying Power",
+    def: "How much cash you have available to buy more crypto without adding more money.",
+    explain: "This is your spendable balance—the amount you can use right now to place new orders.",
+  },
+  rsi: {
+    term: "RSI",
+    def: "Relative Strength Index—a number (0–100) that shows how strong or weak recent price moves have been.",
+    explain: "Above 70 often means the asset has been bought a lot lately and might cool off. Below 30 often means the opposite—lots of selling, and it might bounce. It’s one tool to spot potential turning points.",
+  },
+};
 const formatTs = (iso: string) =>
   new Date(iso).toLocaleString("en-US", { timeZone: TZ, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 const ASSET_NAMES: Record<string, string> = { BTC: "Bitcoin", ETH: "Ethereum" };
@@ -28,7 +46,20 @@ export function PortfolioTab({
   const [ariaTake, setAriaTake] = useState<{ btc: string; eth: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [ariaTakeLoading, setAriaTakeLoading] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const infoRef = useRef<HTMLDivElement>(null);
   const ariaTakeFetchedAt = useRef(0);
+
+  useEffect(() => {
+    if (!infoOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (infoRef.current && !infoRef.current.contains(e.target as Node)) {
+        setInfoOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [infoOpen]);
   const ARIA_CACHE_MS = 15 * 60 * 1000;
 
   const loadSummary = () => {
@@ -77,14 +108,81 @@ export function PortfolioTab({
   const isStale = summary?.data_source === "robinhood_stale";
   const credentialsConfigured = summary?.credentials_configured ?? false;
 
+  const glossaryTooltip = (
+    <div style={{ padding: 12, maxWidth: 420 }}>
+      <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 10, color: "#00ff94", fontFamily: "var(--mono)" }}>Glossary</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, fontSize: 14, lineHeight: 1.5, color: "#aaa", fontFamily: "var(--body)" }}>
+        <div>
+          <div style={{ fontWeight: 700, color: "#00ff94", marginBottom: 4 }}>{INFO_CONTENT.unrealizedPnl.term}</div>
+          <div>{INFO_CONTENT.unrealizedPnl.def}</div>
+          <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>{INFO_CONTENT.unrealizedPnl.explain}</div>
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, color: "#00ff94", marginBottom: 4 }}>{INFO_CONTENT.buyingPower.term}</div>
+          <div>{INFO_CONTENT.buyingPower.def}</div>
+          <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>{INFO_CONTENT.buyingPower.explain}</div>
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, color: "#00ff94", marginBottom: 4 }}>{INFO_CONTENT.rsi.term}</div>
+          <div>{INFO_CONTENT.rsi.def}</div>
+          <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>{INFO_CONTENT.rsi.explain}</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const HeaderRow = () => (
+    <div ref={infoRef} style={{ position: "relative" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
+        <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)" }}>CRYPTO PORTFOLIO</div>
+        <button
+          onClick={() => setInfoOpen((o) => !o)}
+          style={{
+            flexShrink: 0,
+            width: 24,
+            height: 24,
+            borderRadius: "50%",
+            border: "1px solid rgba(255,255,255,0.2)",
+            background: infoOpen ? "rgba(0,255,148,0.15)" : "rgba(255,255,255,0.04)",
+            color: infoOpen ? "#00ff94" : "#666",
+            fontSize: 18,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          title="Glossary"
+        >
+          ⓘ
+        </button>
+      </div>
+      {infoOpen && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            zIndex: 20,
+            background: "#141414",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: 12,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+          }}
+        >
+          {glossaryTooltip}
+        </div>
+      )}
+    </div>
+  );
+
   if (!hasData) {
     const message = credentialsConfigured
       ? "Could not load portfolio from Robinhood. Check the server console for API errors. Possible causes: wrong endpoint format, invalid signing, or no BTC/ETH positions in your account."
       : "Add your Robinhood API credentials to .env to see your live crypto portfolio here. Until then, ARIA is watching BTC and ETH market prices via CoinGecko.";
     return (
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 4 }}>PORTFOLIO</div>
-        <div
+        <HeaderRow />
+          <div
           style={{
             padding: 32,
             textAlign: "center",
@@ -123,7 +221,7 @@ export function PortfolioTab({
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 4 }}>PORTFOLIO</div>
+      <HeaderRow />
 
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16, marginBottom: 8 }}>
         <div style={{ fontSize: 14, fontFamily: "var(--mono)", color: "#888" }}>

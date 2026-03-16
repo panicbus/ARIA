@@ -9,12 +9,15 @@
  *
  * Uses tweetnacl for Ed25519 signing — Robinhood exports raw base64 keys that Node's OpenSSL
  * can fail to parse (ERR_OSSL_UNSUPPORTED), so we use pure JS Ed25519 instead.
+ *
+ * Uses native https module instead of fetch — Cloudflare blocks Node's fetch; https works.
  */
 
 import nacl from "tweetnacl";
+import https from "https";
 import { sign, createPrivateKey } from "crypto";
 
-const ROBINHOOD_BASE = "https://trading.robinhood.com";
+const ROBINHOOD_HOST = "trading.robinhood.com";
 
 let requestCount = 0;
 let lastResetAt = Date.now();
@@ -79,7 +82,8 @@ function normalizePem(raw: string): string | null {
 
 /**
  * Robinhood signs: api_key + timestamp + path + method + body (no separators).
- * See: https://stackoverflow.com/questions/78302239/how-to-post-using-robinhood-crypto-api-in-python
+ * Path must be normalized: start with /, method uppercase.
+ * Ref: albedosehen/robinhood-crypto-client createSignatureMessage
  */
 function signRequest(
   apiKey: string,
@@ -89,7 +93,9 @@ function signRequest(
   method: string,
   body: string
 ): string {
-  const messageStr = `${apiKey}${timestamp}${path}${method}${body}`;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const normalizedMethod = method.toUpperCase();
+  const messageStr = `${apiKey}${timestamp}${normalizedPath}${normalizedMethod}${body}`;
   const message = Buffer.from(messageStr, "utf8");
 
   const pem = normalizePem(privateKeyRaw);
@@ -115,8 +121,8 @@ function getRobinhoodHeaders(path: string, method: string, body: string): Record
     "x-timestamp": timestamp,
     "x-signature": sig,
     "Content-Type": "application/json",
-    "User-Agent": "ARIA/1.0 (Robinhood Crypto API client)",
     "Accept": "application/json",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
   };
 }
 
@@ -150,32 +156,47 @@ export type RobinhoodSummary = {
 const CRYPTO_SYMBOLS = ["BTC", "ETH"];
 const ROBINHOOD_SYMBOL_MAP: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD" };
 
-async function rhFetch<T>(path: string, options: RequestInit = {}): Promise<T | null> {
-  if (!isConfigured()) return null;
+function rhFetch<T>(path: string, options: { method?: string; body?: string } = {}): Promise<T | null> {
+  if (!isConfigured()) return Promise.resolve(null);
   checkRateLimit();
   requestCount++;
 
-  const url = `${ROBINHOOD_BASE}${path}`;
   const method = (options.method ?? "GET").toUpperCase();
-  const body = options.body ?? "";
-  const bodyStr = typeof body === "string" ? body : "";
+  const bodyStr = typeof options.body === "string" ? options.body : "";
   const headers = getRobinhoodHeaders(path, method, bodyStr);
 
-  try {
-    const res = await fetch(url, {
-      ...options,
-      headers: { ...headers, ...(options.headers as Record<string, string>) },
+  return new Promise((resolve) => {
+    const req = https.request(
+      {
+        hostname: ROBINHOOD_HOST,
+        path,
+        method,
+        headers: { ...headers, ...(options.body ? { "Content-Length": Buffer.byteLength(bodyStr) } : {}) },
+      },
+      (res) => {
+        let text = "";
+        res.on("data", (chunk) => (text += chunk));
+        res.on("end", () => {
+          if (!res.statusCode || res.statusCode >= 400) {
+            console.warn(`Robinhood API ${path}: ${res.statusCode}`, text.slice(0, 500));
+            resolve(null);
+            return;
+          }
+          try {
+            resolve(text ? (JSON.parse(text) as T) : null);
+          } catch {
+            resolve(null);
+          }
+        });
+      }
+    );
+    req.on("error", (e) => {
+      console.warn("Robinhood API error:", e);
+      resolve(null);
     });
-    const text = await res.text();
-    if (!res.ok) {
-      console.warn(`Robinhood API ${path}: ${res.status}`, text.slice(0, 500));
-      return null;
-    }
-    return text ? (JSON.parse(text) as T) : null;
-  } catch (e) {
-    console.warn("Robinhood API error:", e);
-    return null;
-  }
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
 }
 
 export async function fetchCryptoAccount(): Promise<RobinhoodAccount | null> {
@@ -196,11 +217,11 @@ export async function fetchCryptoHoldings(): Promise<RobinhoodHolding[] | null> 
 
   const holdings: RobinhoodHolding[] = [];
   for (const r of data.results) {
-    const symbolRaw = (r.symbol ?? r.currency ?? (r as any).currency?.code ?? "") as string;
+    const symbolRaw = (r.asset_code ?? r.symbol ?? r.currency ?? (r as any).currency?.code ?? "") as string;
     const symbol = String(symbolRaw).replace(/-USD$/, "").toUpperCase();
     if (!CRYPTO_SYMBOLS.includes(symbol)) continue;
 
-    const quantity = Number(r.quantity ?? r.amount ?? r.quantity_available ?? 0) || 0;
+    const quantity = Number(r.total_quantity ?? r.quantity ?? r.amount ?? r.quantity_available_for_trading ?? r.quantity_available ?? 0) || 0;
     const costBasis = Number(r.cost_basis ?? r.cost_basis_amount ?? r.cost_basis_price ?? 0) || 0;
     const avgBuy = Number(r.average_buy_price ?? r.average_price ?? r.average_buy ?? costBasis / (quantity || 1)) || 0;
     let currentPrice = Number(r.current_price ?? r.market_price ?? r.market_value ?? 0) || 0;
@@ -227,29 +248,25 @@ export async function fetchCryptoPrice(symbol: string): Promise<number | null> {
   const rhSymbol = ROBINHOOD_SYMBOL_MAP[symbol.toUpperCase()] ?? `${symbol.toUpperCase()}-USD`;
   const path = `/api/v1/crypto/marketdata/best_bid_ask/?symbol=${encodeURIComponent(rhSymbol)}`;
   const data = await rhFetch<{
-    best_bid?: string | number;
-    best_ask?: string | number;
-    results?: Array<{ best_bid?: string; best_ask?: string }>;
+    results?: Array<{
+      price?: string;
+      bid_inclusive_of_sell_spread?: string;
+      ask_inclusive_of_buy_spread?: string;
+    }>;
   }>(path);
 
-  if (!data) return null;
+  if (!data?.results?.[0]) return null;
 
-  let bestBid: number;
-  let bestAsk: number;
+  const r = data.results[0];
+  const price = parseFloat(String(r.price ?? 0)) || 0;
+  if (price > 0) return price;
 
-  if (data.results?.[0]) {
-    const r = data.results[0];
-    bestBid = parseFloat(String(r.best_bid ?? 0)) || 0;
-    bestAsk = parseFloat(String(r.best_ask ?? 0)) || 0;
-  } else {
-    bestBid = parseFloat(String(data.best_bid ?? 0)) || 0;
-    bestAsk = parseFloat(String(data.best_ask ?? 0)) || 0;
-  }
-
-  if (bestBid <= 0 && bestAsk <= 0) return null;
-  if (bestBid <= 0) return bestAsk;
-  if (bestAsk <= 0) return bestBid;
-  return (bestBid + bestAsk) / 2;
+  const bid = parseFloat(String(r.bid_inclusive_of_sell_spread ?? 0)) || 0;
+  const ask = parseFloat(String(r.ask_inclusive_of_buy_spread ?? 0)) || 0;
+  if (bid > 0 && ask > 0) return (bid + ask) / 2;
+  if (bid > 0) return bid;
+  if (ask > 0) return ask;
+  return null;
 }
 
 export async function fetchCryptoPortfolioSummary(): Promise<RobinhoodSummary | null> {
