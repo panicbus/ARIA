@@ -10,7 +10,9 @@
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "vite",
     "server": "ts-node-dev --respawn --transpile-only server/index.ts",
-    "build": "tsc && vite build"
+    "build": "tsc && npm run build:server && vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start": "node dist-server/server/index.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",

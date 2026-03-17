@@ -1,4 +1,4 @@
-export const API = "http://localhost:3001/api";
+export const API = typeof window !== "undefined" ? `${window.location.origin}/api` : "http://localhost:3001/api";
 
 export const SYSTEM_NOTE =
   "ARIA is running locally. Connected to your Express server with SQLite memory.";

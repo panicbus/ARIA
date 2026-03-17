@@ -8,7 +8,7 @@ const formatTs = (iso: string) =>
 import type { Memory, Dashboard } from "../../types";
 
 function memorySection(key: string): "portfolio" | "preferences" | "context" {
-  if (key.startsWith("position_") || key === "positions" || key === "watchlist") return "portfolio";
+  if (key.startsWith("position_") || key === "positions" || key === "watchlist" || key === "watchlist_core" || key === "watchlist_speculative") return "portfolio";
   if (key === "risk_tolerance" || key === "signals_preference" || key.startsWith("pref_")) return "preferences";
   return "context";
 }
@@ -290,14 +290,41 @@ export function MemoryTab({
                 </div>
               );
             })}
-            {portfolioMemories.filter((m) => m.key === "watchlist").length > 0 && (
+            {(portfolioMemories.some((m) => m.key === "watchlist_core") || portfolioMemories.some((m) => m.key === "watchlist_speculative") || portfolioMemories.some((m) => m.key === "watchlist")) && (
               <>
                 <div style={{ fontSize: 10, letterSpacing: "0.1em", color: "#666", fontFamily: "var(--mono)", marginTop: 12, marginBottom: 4 }}>WATCHLIST</div>
+                {portfolioMemories.filter((m) => m.key === "watchlist_core").map((m) => {
+                  const arr = parseMemoryValue(m.value);
+                  const disp = Array.isArray(arr) ? arr.join(", ") : String(m.value);
+                  return (
+                    <div key={m.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.07)" }}>
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "#ccc" }}>• Core: {disp}</span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {btn("Edit", () => { setEditingKey(m.key); setEditValue(m.value); })}
+                        {btn("×", () => onDelete(m.key))}
+                      </div>
+                    </div>
+                  );
+                })}
+                {portfolioMemories.filter((m) => m.key === "watchlist_speculative").map((m) => {
+                  const arr = parseMemoryValue(m.value);
+                  const disp = Array.isArray(arr) ? arr.join(", ") : String(m.value);
+                  return (
+                    <div key={m.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.07)" }}>
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "#ccc" }}>• Speculative: {disp}</span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {btn("Edit", () => { setEditingKey(m.key); setEditValue(m.value); })}
+                        {btn("×", () => onDelete(m.key))}
+                      </div>
+                    </div>
+                  );
+                })}
                 {portfolioMemories.filter((m) => m.key === "watchlist").map((m) => (
                   <div key={m.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.07)" }}>
                     <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "#ccc" }}>• {String(m.value)}</span>
                     <div style={{ display: "flex", gap: 6 }}>
                       {btn("Edit", () => { setEditingKey(m.key); setEditValue(m.value); })}
+                      {btn("×", () => onDelete(m.key))}
                     </div>
                   </div>
                 ))}

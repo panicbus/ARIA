@@ -30,10 +30,16 @@ import { fetchCryptoPortfolioSummary, logRobinhoodStatus } from "./services/robi
 dotenv.config();
 
 const app = express();
-const PORT = 3001;
+const PORT = Number(process.env.PORT) || 3001;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "..");
 
 app.use(cors());
 app.use(express.json());
+
+// Fly.io / load balancer health check (root path for simplicity)
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "healthy", timestamp: new Date().toISOString() });
+});
 
 // WAYPOINT [database]
 // WHAT: sql.js in-memory DB persisted to aria.db; execAll for SELECTs, run() for writes, saveDb() after every write.
@@ -41,8 +47,8 @@ app.use(express.json());
 // HOW IT HELPS NICO: Persistent storage for OHLCV, indicators, and signals — the foundation for technical analysis and backtesting.
 
 // ── Database (sql.js: no native build, runs everywhere) ────────────────────────
-const DB_PATH = path.join(__dirname, "../aria.db");
-const BACKUP_DIR = path.join(__dirname, "../backups");
+const DB_PATH = path.join(DATA_DIR, "aria.db");
+const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const BACKUP_RETAIN = 6; // Keep last 6 backups (~3 months at 14-day interval)
 let db: import("sql.js").Database;
 
@@ -169,6 +175,9 @@ let fetchHN: () => Promise<void>;
 
 // ── Start (async: load sql.js and DB file) ─────────────────────────────────────
 async function start() {
+  const dbDir = path.dirname(DB_PATH);
+  if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+
   const SQL = await initSqlJs();
   const fileBuffer = fs.existsSync(DB_PATH) ? fs.readFileSync(DB_PATH) : undefined;
   db = new SQL.Database(fileBuffer);
@@ -306,6 +315,22 @@ async function start() {
     if (rows.length) saveDb();
   } catch (_) {}
   saveDb();
+
+  // WAYPOINT [seed-watchlist]: If watchlist_core is empty or missing, seed with Nico's known watchlist so it survives fresh deploys
+  const existingWatchlist = execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist_core' LIMIT 1");
+  const watchlistVal = existingWatchlist[0]?.value?.trim();
+  const watchlistEmpty = !watchlistVal || watchlistVal === "[]";
+  if (!existingWatchlist.length || watchlistEmpty) {
+    const defaultWatchlist = ["AMD", "NET", "APP", "AMZN", "NEE", "LEN", "OKLO", "CLS", "PGY", "ETH"];
+    const now = new Date().toISOString();
+    db.run(
+      `INSERT INTO memories (key, value, confidence, source, updated_at, created_at) VALUES (:key, :value, :confidence, :source, :updated_at, :created_at)
+       ON CONFLICT(key) DO UPDATE SET value = :value, confidence = 1, source = 'seed', updated_at = :updated_at`,
+      { ":key": "watchlist_core", ":value": JSON.stringify(defaultWatchlist), ":confidence": 1, ":source": "seed", ":updated_at": now, ":created_at": now }
+    );
+    saveDb();
+    console.log("Seeded watchlist_core with default tickers");
+  }
 
   const buildLiveContext = createBuildLiveContext({ execAll });
   const buildMemoryContext = createBuildMemoryContext({ execAll });
@@ -451,6 +476,15 @@ async function start() {
     refreshCryptoPortfolio,
     anthropic,
   }));
+
+  // Serve built frontend in production (cwd for Docker, __dirname for dev)
+  const distPath = fs.existsSync(path.join(process.cwd(), "dist"))
+    ? path.join(process.cwd(), "dist")
+    : path.join(__dirname, "../dist");
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get("*", (_req, res) => res.sendFile(path.join(distPath, "index.html")));
+  }
 
   app.listen(PORT, () => {
     console.log(`

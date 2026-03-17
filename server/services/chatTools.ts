@@ -110,6 +110,32 @@ export const TOOLS: any[] = [
       additionalProperties: false,
     },
   },
+  {
+    name: "add_to_watchlist",
+    description: "Add a ticker to Nico's watchlist. Use when Nico explicitly says 'add [ticker] to my watchlist' or 'watch [ticker]'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ticker: { type: "string", description: "Ticker symbol to add (e.g. BOTZ, AMD)" },
+        list: { type: "string", enum: ["core", "speculative"], description: "Which list: core (main watchlist) or speculative" },
+      },
+      required: ["ticker", "list"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "remove_from_watchlist",
+    description: "Remove a ticker from Nico's watchlist. Use when Nico explicitly says 'remove [ticker] from my watchlist' or 'stop watching [ticker]'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ticker: { type: "string", description: "Ticker symbol to remove" },
+        list: { type: "string", enum: ["core", "speculative"], description: "Which list: core or speculative" },
+      },
+      required: ["ticker", "list"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 type ChatToolsDeps = {
@@ -158,12 +184,33 @@ export function createHandleToolCall(deps: ChatToolsDeps): (name: string, input:
       }
       case "remember": {
         const key: string | undefined = input?.key;
-        const value: string | undefined = input?.value;
+        let value: string | undefined = input?.value;
         if (!key || !value) return { error: "key and value are required" };
         const confidence = typeof input?.confidence === "number" ? Math.max(0, Math.min(1, input.confidence)) : 1;
         const source = input?.source === "explicit" || input?.source === "inferred" ? input.source : null;
         const updated_at = new Date().toISOString();
         const created_at = new Date().toISOString();
+
+        // WAYPOINT [remember-merge]: merge array-type watchlist keys instead of overwrite
+        const MERGE_ARRAY_KEYS = ["watchlist_core", "watchlist_speculative"];
+        if (MERGE_ARRAY_KEYS.includes(key)) {
+          const existing = execAll<{ value: string }>(
+            `SELECT value FROM memories WHERE key = '${key.replace(/'/g, "''")}' LIMIT 1`
+          );
+          if (existing.length && existing[0].value) {
+            try {
+              const currentArray = JSON.parse(existing[0].value);
+              const newArray = JSON.parse(value);
+              if (Array.isArray(currentArray) && Array.isArray(newArray)) {
+                const merged = [...new Set([...currentArray, ...newArray])];
+                value = JSON.stringify(merged);
+              }
+            } catch {
+              /* keep existing value if parse fails */
+            }
+          }
+        }
+
         db.run(
           `INSERT INTO memories (key, value, confidence, source, updated_at, created_at) VALUES (:key, :value, :confidence, :source, :updated_at, :created_at)
            ON CONFLICT(key) DO UPDATE SET value = :value, confidence = :confidence, source = :source, updated_at = :updated_at`,
@@ -237,6 +284,52 @@ export function createHandleToolCall(deps: ChatToolsDeps): (name: string, input:
         const picks = getScannerTopPicks?.(0) ?? [];
         return { picks };
       }
+      case "add_to_watchlist": {
+        const ticker = String(input?.ticker ?? "").trim().toUpperCase();
+        const list = input?.list === "speculative" ? "watchlist_speculative" : "watchlist_core";
+        if (!ticker) return { error: "ticker is required" };
+        const existing = execAll<{ value: string }>(`SELECT value FROM memories WHERE key = '${list}' LIMIT 1`);
+        let arr: string[] = [];
+        if (existing.length && existing[0].value) {
+          try {
+            const parsed = JSON.parse(existing[0].value);
+            if (Array.isArray(parsed)) arr = parsed.map((x: unknown) => String(x).toUpperCase()).filter(Boolean);
+          } catch (_) {}
+        }
+        if (arr.includes(ticker)) return { status: "ok", message: `${ticker} already in watchlist`, watchlist: arr };
+        arr.push(ticker);
+        const now = new Date().toISOString();
+        db.run(
+          `INSERT INTO memories (key, value, confidence, source, updated_at, created_at) VALUES (:key, :value, :confidence, :source, :updated_at, :created_at)
+           ON CONFLICT(key) DO UPDATE SET value = :value, confidence = 1, source = 'explicit', updated_at = :updated_at`,
+          { ":key": list, ":value": JSON.stringify(arr), ":confidence": 1, ":source": "explicit", ":updated_at": now, ":created_at": now }
+        );
+        saveDb();
+        return { status: "ok", message: `Added ${ticker} to watchlist`, watchlist: arr };
+      }
+      case "remove_from_watchlist": {
+        const ticker = String(input?.ticker ?? "").trim().toUpperCase();
+        const list = input?.list === "speculative" ? "watchlist_speculative" : "watchlist_core";
+        if (!ticker) return { error: "ticker is required" };
+        const existing = execAll<{ value: string }>(`SELECT value FROM memories WHERE key = '${list}' LIMIT 1`);
+        let arr: string[] = [];
+        if (existing.length && existing[0].value) {
+          try {
+            const parsed = JSON.parse(existing[0].value);
+            if (Array.isArray(parsed)) arr = parsed.map((x: unknown) => String(x).toUpperCase()).filter(Boolean);
+          } catch (_) {}
+        }
+        const filtered = arr.filter((t) => t !== ticker);
+        if (filtered.length === arr.length) return { status: "ok", message: `${ticker} was not in watchlist`, watchlist: arr };
+        const now = new Date().toISOString();
+        db.run(
+          `INSERT INTO memories (key, value, confidence, source, updated_at, created_at) VALUES (:key, :value, :confidence, :source, :updated_at, :created_at)
+           ON CONFLICT(key) DO UPDATE SET value = :value, confidence = 1, source = 'explicit', updated_at = :updated_at`,
+          { ":key": list, ":value": JSON.stringify(filtered), ":confidence": 1, ":source": "explicit", ":updated_at": now, ":created_at": now }
+        );
+        saveDb();
+        return { status: "ok", message: `Removed ${ticker} from watchlist`, watchlist: filtered };
+      }
       default:
         return { error: `Unknown tool '${name}'` };
     }
@@ -251,7 +344,31 @@ export function createRunMemoryExtraction(deps: {
 
   return async function runMemoryExtraction(userContent: string, assistantContent: string): Promise<void> {
     if (!process.env.ANTHROPIC_API_KEY?.trim()) return;
-    const prompt = `Review this exchange. Extract any new facts about Nico (portfolio, positions, preferences, goals, risk tolerance, decisions, patterns). For each fact call remember with key, value, confidence 0-1, and source "explicit" or "inferred". If nothing new, do not call tools.`;
+    const prompt = `You are extracting facts from a conversation to update ARIA's memory. Follow these rules strictly:
+
+WATCHLIST RULES (most important):
+- NEVER call remember() for watchlist_core, watchlist_speculative, or watchlist unless Nico EXPLICITLY says one of these things:
+  * "add [ticker] to my watchlist"
+  * "remove [ticker] from my watchlist"
+  * "my watchlist is [list]"
+  * "watch [ticker]"
+  * "stop watching [ticker]"
+- Mentioning a ticker in conversation does NOT mean add it to the watchlist
+- Asking about a ticker does NOT mean add it to the watchlist
+- If you are not 100% certain Nico is explicitly modifying his watchlist, DO NOT call remember() for watchlist keys
+
+POSITION RULES:
+- Only update position_* keys when Nico explicitly says he bought, sold, or is holding a position
+- Do not infer positions from market discussion
+
+SAFE TO EXTRACT:
+- risk_tolerance (only if explicitly stated)
+- preferences (only if explicitly stated)
+- learning_goals (only if explicitly stated)
+
+WHEN IN DOUBT: Do nothing. It is always better to not extract than to overwrite correct data with partial data.
+
+For each valid fact call remember with key, value, confidence 0-1, and source "explicit" or "inferred". If nothing qualifies, do not call tools.`;
     try {
       const r = await anthropic.messages.create({
         model: "claude-sonnet-4-5",
