@@ -129,6 +129,20 @@ export const TOOLS: any[] = [
     },
   },
   {
+    name: "add_position",
+    description: "Add or update a stock/equity position in Nico's holdings. Use when Nico says he owns, bought, or is holding shares (e.g. 'I have 100 shares of AMD at $120', 'update my RDDT position: 23 shares at $45'). Always store in ONE position with ticker, quantity, and average_cost.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ticker: { type: "string", description: "Ticker symbol (e.g. RDDT, AMD, BRK.B)" },
+        quantity: { type: "number", description: "Number of shares" },
+        average_cost: { type: "number", description: "Average cost per share (entry price)" },
+      },
+      required: ["ticker", "quantity"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "remove_position",
     description: "Remove a stock/equity position from Nico's holdings. Use when Nico says he sold, closed, or wants to remove a position (e.g. 'remove AMD from my holdings', 'I sold my AMD', 'close my AMD position').",
     input_schema: {
@@ -158,6 +172,7 @@ export const GEMINI_TOOLS: any[] = [
       { name: "web_search", description: "Search the web for current information.", parameters: { type: SchemaType.OBJECT, properties: { query: { type: SchemaType.STRING }, max_results: { type: SchemaType.INTEGER } }, required: ["query"] } },
       { name: "add_to_watchlist", description: "Add a ticker to Nico's watchlist.", parameters: { type: SchemaType.OBJECT, properties: { ticker: { type: SchemaType.STRING }, list: { type: SchemaType.STRING } }, required: ["ticker", "list"] } },
       { name: "remove_from_watchlist", description: "Remove a ticker from Nico's watchlist.", parameters: { type: SchemaType.OBJECT, properties: { ticker: { type: SchemaType.STRING }, list: { type: SchemaType.STRING } }, required: ["ticker", "list"] } },
+      { name: "add_position", description: "Add or update a stock position. Use when Nico says he owns, bought, or holds shares. Provide ticker, quantity, and average_cost.", parameters: { type: SchemaType.OBJECT, properties: { ticker: { type: SchemaType.STRING }, quantity: { type: SchemaType.NUMBER }, average_cost: { type: SchemaType.NUMBER } }, required: ["ticker", "quantity"] } },
       { name: "remove_position", description: "Remove a stock position from Nico's holdings. Use when Nico says he sold, closed, or wants to remove a position.", parameters: { type: SchemaType.OBJECT, properties: { ticker: { type: SchemaType.STRING } }, required: ["ticker"] } },
     ],
   },
@@ -211,6 +226,16 @@ export function createHandleToolCall(deps: ChatToolsDeps): (name: string, input:
         const key: string | undefined = input?.key;
         let value: string | undefined = input?.value;
         if (!key || !value) return { error: "key and value are required" };
+
+        // Reject malformed position_* keys (e.g. position_AVERAGE_COST_RDDT, position_QUANTITY_RDDT)
+        // Valid: position_RDDT, position_AMD. Use add_position tool for positions.
+        if (key.startsWith("position_")) {
+          const tickerPart = key.replace(/^position_/i, "");
+          if (!/^[A-Z0-9.]{1,6}$/i.test(tickerPart) || tickerPart.includes("_")) {
+            return { error: `Invalid position key '${key}'. Use add_position tool for positions (ticker, quantity, average_cost).` };
+          }
+        }
+
         const confidence = typeof input?.confidence === "number" ? Math.max(0, Math.min(1, input.confidence)) : 1;
         const source = input?.source === "explicit" || input?.source === "inferred" ? input.source : null;
         const updated_at = new Date().toISOString();
@@ -355,6 +380,28 @@ export function createHandleToolCall(deps: ChatToolsDeps): (name: string, input:
         saveDb();
         return { status: "ok", message: `Removed ${ticker} from watchlist`, watchlist: filtered };
       }
+      case "add_position": {
+        const ticker = String(input?.ticker ?? "").trim().toUpperCase();
+        if (!ticker) return { error: "ticker is required" };
+        const quantity = typeof input?.quantity === "number" ? input.quantity : parseFloat(String(input?.quantity ?? ""));
+        if (isNaN(quantity) || quantity <= 0) return { error: "quantity must be a positive number" };
+        const average_cost = typeof input?.average_cost === "number" ? input.average_cost : parseFloat(String(input?.average_cost ?? ""));
+        const key = `position_${ticker}`;
+        const value = JSON.stringify({
+          ticker,
+          quantity,
+          amount: quantity,
+          ...(isNaN(average_cost) || average_cost <= 0 ? {} : { entry: average_cost, average_cost }),
+        });
+        const now = new Date().toISOString();
+        db.run(
+          `INSERT INTO memories (key, value, confidence, source, updated_at, created_at) VALUES (:key, :value, 1, 'explicit', :updated_at, :created_at)
+           ON CONFLICT(key) DO UPDATE SET value = :value, confidence = 1, source = 'explicit', updated_at = :updated_at`,
+          { ":key": key, ":value": value, ":updated_at": now, ":created_at": now }
+        );
+        saveDb();
+        return { status: "ok", message: `Updated ${ticker}: ${quantity} shares${!isNaN(average_cost) && average_cost > 0 ? ` @ $${average_cost}` : ""}` };
+      }
       case "remove_position": {
         const ticker = String(input?.ticker ?? "").trim().toUpperCase();
         if (!ticker) return { error: "ticker is required" };
@@ -391,8 +438,9 @@ WATCHLIST RULES (most important):
 - If you are not 100% certain Nico is explicitly modifying his watchlist, DO NOT call remember() for watchlist keys
 
 POSITION RULES:
-- Only update position_* keys when Nico explicitly says he bought, sold, or is holding a position
-- Do not infer positions from market discussion
+- When Nico says he owns, bought, or holds shares with quantity and/or average price, use add_position (NOT remember). Example: "I have 23 RDDT at $45" → add_position(ticker: "RDDT", quantity: 23, average_cost: 45).
+- NEVER call remember() with keys like position_AVERAGE_COST_X, position_QUANTITY_X, or any position_ key that has extra words (AVERAGE_COST, QUANTITY) in it. Only position_TICKER (e.g. position_RDDT) is valid, and that should be done via add_position.
+- If Nico explicitly says he sold or closed a position, use remove_position.
 
 SAFE TO EXTRACT:
 - risk_tolerance (only if explicitly stated)

@@ -23,9 +23,30 @@ aria/
 
 ### 1. Create the volume (first time only)
 
+**Required for chat and data persistence.** Without this, the database resets on each deploy.
+
 ```bash
 flyctl volumes create aria_data --size 1 --region sjc
 ```
+
+If chat disappears on refresh, run these diagnostics:
+
+1. **Debug endpoint** (after deploy):
+   ```bash
+   curl -s "https://aria-nico.fly.dev/api/debug"
+   ```
+   Check `messageCount`, `dbExists`, `dataDirExists`.
+
+2. **Test persistence**: Send a chat message, then `curl -s "https://aria-nico.fly.dev/api/history"` — do you see it? Refresh the page, curl again — is it still there?
+
+3. **Multiple volumes** = each deploy may create a new machine with a new empty volume. Clean up orphans:
+   ```bash
+   flyctl volumes list
+   # Destroy UNATTACHED volumes (keep the one with ATTACHED VM):
+   flyctl volumes destroy vol_XXXXX   # repeat for each unattached
+   ```
+
+4. **Ensure single machine**: `flyctl scale count 1`
 
 ### 2. Set secrets
 

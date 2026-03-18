@@ -36,7 +36,12 @@ export function HoldingsAccordion({
     return () => clearInterval(t);
   }, []);
 
-  const positions = memories.filter((m) => m.key.startsWith("position_"));
+  // Only show valid position_TICKER keys (reject position_AVERAGE_COST_X, position_QUANTITY_X, etc.)
+  const isValidPositionKey = (key: string) => {
+    const ticker = key.replace(/^position_/i, "").toUpperCase();
+    return /^[A-Z0-9.]{1,6}$/.test(ticker) && !ticker.includes("_");
+  };
+  const positions = memories.filter((m) => m.key.startsWith("position_") && isValidPositionKey(m.key));
   const cryptoSymbols = new Set(cryptoPortfolio.map((c) => c.symbol.toUpperCase()));
   const memoryPositionsFiltered = positions.filter((m) => {
     const ticker = m.key.replace(/^position_/i, "").toUpperCase();

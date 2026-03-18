@@ -104,7 +104,9 @@ When giving financial signals, format them like:
 TICKER: [symbol]
 SIGNAL: [BUY | SELL | HOLD | WATCH]
 REASONING: [1-2 sentences max]
-ACTION: [specific next step if applicable]`;
+ACTION: [specific next step if applicable]
+
+When Nico says he owns, bought, or holds shares (e.g. "I have 23 RDDT at $45", "update my AMD position: 100 shares, avg $120"), use add_position with ticker, quantity, and average_cost. Do NOT use remember for positions.`;
 
 // ── Live data (prices, news, signals) ──────────────────────────────────────────
 // Base tickers always fetched. Memory watchlist (Portfolio tab) adds more — no code change needed.
@@ -144,13 +146,17 @@ function getWatchedTickers(): string[] {
     watchRaw.split(/[\s,]+/).map((s) => s.toUpperCase()).filter((s) => s.length > 0).forEach((t) => tickers.add(t));
   }
 
-  // Read all position_* keys from memories table
+  // Read valid position_* keys only (reject position_AVERAGE_COST_X, position_QUANTITY_X)
   const posRows = execAll<{ key: string; value: string }>("SELECT key, value FROM memories WHERE key LIKE 'position_%'");
   for (const row of posRows) {
+    const tickerFromKey = row.key.replace(/^position_/i, "").toUpperCase();
+    if (!/^[A-Z0-9.]{1,6}$/.test(tickerFromKey) || tickerFromKey.includes("_")) continue;
     try {
       const pos = JSON.parse(row.value) as { ticker?: string };
-      if (pos?.ticker) tickers.add(String(pos.ticker).toUpperCase());
-    } catch (_) {}
+      tickers.add((pos?.ticker ?? tickerFromKey).toUpperCase());
+    } catch (_) {
+      tickers.add(tickerFromKey);
+    }
   }
 
   return Array.from(tickers);
@@ -391,7 +397,7 @@ async function start() {
     cryptoIds: CRYPTO_COINGECKO_IDS,
   });
 
-  app.use("/api", createHealthRouter());
+  app.use("/api", createHealthRouter({ dataDir: DATA_DIR, dbPath: DB_PATH, execAll }));
   app.use("/api", createDashboardRouter({ execAll, getWatchedTickers, getRiskContextForTicker }));
   app.use("/api/signals", createSignalsRouter({ execAll, run, saveDb, getRiskContextForTicker, generateSignals }));
   app.use("/api/briefings", createBriefingsRouter({ db, execAll, saveDb, generateBriefing, generateEveningBriefing, sendBriefingEmail }));

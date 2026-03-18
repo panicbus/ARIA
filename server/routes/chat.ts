@@ -115,8 +115,9 @@ export function createChatRouter(deps: ChatDeps): Router {
   });
 
   router.get("/history", (req: Request, res: Response) => {
-    const messages = execAll("SELECT * FROM messages ORDER BY created_at ASC LIMIT 100");
-    res.json(messages);
+    // Get 100 most recent, then reverse so chronological for display
+    const messages = execAll("SELECT * FROM messages ORDER BY created_at DESC LIMIT 100");
+    res.json(messages.reverse());
   });
 
   router.delete("/history", (req: Request, res: Response) => {

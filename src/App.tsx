@@ -74,6 +74,31 @@ export default function App() {
     ta.style.height = `${Math.min(ta.scrollHeight, 280)}px`;
   }, [input]);
 
+  const loadHistory = React.useCallback(() => {
+    fetch(`${API}/history?t=${Date.now()}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.resolve([])))
+      .then((data: unknown) => {
+        const arr = Array.isArray(data) ? data : (data && typeof data === "object" && Array.isArray((data as any).messages) ? (data as any).messages : []);
+        if (arr.length === 0) {
+          setMessages([{
+            role: "assistant",
+            content: "ARIA online. I'm your personal intelligence layer — tech industry, financial signals, and developer growth. What do you need?",
+            ts: formatTimeLA(),
+          }]);
+        } else {
+          setMessages(arr.map((m: { id?: number; role: string; content: string; created_at?: string }) => ({
+            ...m,
+            ts: formatTimeLA(m.created_at ?? new Date().toISOString()),
+          })));
+        }
+      })
+      .catch(() => setMessages([{
+        role: "assistant",
+        content: "ARIA online. I'm your personal intelligence layer — tech industry, financial signals, and developer growth. What do you need?",
+        ts: formatTimeLA(),
+      }]));
+  }, []);
+
   useEffect(() => {
     // Check server health
     fetch(`${API}/health`)
@@ -81,21 +106,20 @@ export default function App() {
       .then(() => setOnline(true))
       .catch(() => setOnline(false));
 
-    // Load history
-    fetch(`${API}/history`)
-      .then(r => r.json())
-      .then((data: Message[]) => {
-        if (data.length === 0) {
-          setMessages([{
-            role: "assistant",
-            content: "ARIA online. I'm your personal intelligence layer — tech industry, financial signals, and developer growth. What do you need?",
-            ts: formatTimeLA(),
-          }]);
-        } else {
-          setMessages(data.map(m => ({ ...m, ts: formatTimeLA(m.created_at!) })));
-        }
-      });
-  }, []);
+    loadHistory();
+    // Reload history when user returns to tab (helps if initial load was cached/stale)
+    const onFocus = () => { if (document.visibilityState === "visible") loadHistory(); };
+    document.addEventListener("visibilitychange", onFocus);
+    return () => document.removeEventListener("visibilitychange", onFocus);
+  }, [loadHistory]);
+
+  // Retry loading history if we're on chat but only have welcome/empty (initial load may have failed)
+  const hasRealHistory = messages.length > 1 || (messages.length === 1 && messages[0]?.role === "user");
+  useEffect(() => {
+    if (activeTab !== "chat" || hasRealHistory) return;
+    const t = setTimeout(loadHistory, 800);
+    return () => clearTimeout(t);
+  }, [activeTab, hasRealHistory, loadHistory]);
 
   // Live dashboard (prices, news, signals) on schedule
   useEffect(() => {
