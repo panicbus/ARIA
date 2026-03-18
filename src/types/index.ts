@@ -51,6 +51,7 @@ export type NewsRow = {
   url: string | null;
   source: string;
   created_at: string;
+  summary?: string | null;
 };
 
 export type Briefing = {

@@ -3,7 +3,11 @@
  * Phase 6a: BTC and ETH use Robinhood first, CoinGecko as silent fallback.
  */
 
+import { JSDOM } from "jsdom";
+import { Readability } from "@mozilla/readability";
+
 import { fetchCryptoPrice as fetchRobinhoodPrice } from "./robinhood";
+import { generateText } from "./gemini";
 
 const HN_TOP = "https://hacker-news.firebaseio.com/v0/topstories.json";
 const HN_ITEM = (id: number) => `https://hacker-news.firebaseio.com/v0/item/${id}.json`;
@@ -145,19 +149,112 @@ export function createLiveDataFetchers(deps: LiveDataDeps) {
     saveDb();
   }
 
+  function summaryFromText(text: string | undefined): string | null {
+    if (!text || typeof text !== "string") return null;
+    const stripped = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const words = stripped.split(/\s+/).filter(Boolean).slice(0, 20);
+    if (words.length === 0) return null;
+    const out = words.join(" ");
+    return out.length > 0 ? out + (words.length >= 20 ? "…" : "") : null;
+  }
+
+  function truncateSummary(s: string, maxWords = 20): string {
+    const decoded = s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+    const words = decoded.trim().split(/\s+/).filter(Boolean).slice(0, maxWords);
+    if (words.length === 0) return "";
+    const out = words.join(" ");
+    return out + (words.length >= maxWords ? "…" : "");
+  }
+
+  async function fetchArticleSummary(url: string, title: string): Promise<string | null> {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const res = await fetch(url, {
+        signal: ctrl.signal,
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; ARIA/1.0; +https://github.com)" },
+        redirect: "follow",
+      });
+      clearTimeout(t);
+      if (!res.ok) return null;
+      const html = await res.text();
+
+      // 1. Try meta description first (fast, no AI cost)
+      const ogMatch = html.match(/<meta\s+property=["']og:description["']\s+content=["']([^"']+)["']/i)
+        ?? html.match(/<meta\s+content=["']([^"']+)["']\s+property=["']og:description["']/i);
+      if (ogMatch?.[1]) return truncateSummary(ogMatch[1]);
+      const descMatch = html.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i)
+        ?? html.match(/<meta\s+content=["']([^"']+)["']\s+name=["']description["']/i);
+      if (descMatch?.[1]) return truncateSummary(descMatch[1]);
+
+      // 2. Scrape article body with Readability, then AI summarize (optional, uses quota)
+      if (!process.env.GEMINI_API_KEY?.trim()) return null;
+      if (process.env.ENABLE_AI_NEWS_SUMMARIES === "false") return null;
+      const dom = new JSDOM(html, { url: res.url });
+      const reader = new Readability(dom.window.document);
+      const article = reader.parse();
+      const text = article?.textContent?.replace(/\s+/g, " ").trim();
+      if (!text || text.length < 100) return null;
+
+      const excerpt = text.slice(0, 2000);
+      const prompt = `Summarize this article in 1-2 sentences (max 25 words). Be concise.
+
+Title: ${title}
+
+Article excerpt:
+${excerpt}
+
+Summary (25 words max):`;
+
+      const summary = (await generateText(prompt)).trim();
+      if (!summary) return null;
+      return truncateSummary(summary, 25);
+    } catch {
+      return null;
+    }
+  }
+
   async function fetchHN(): Promise<void> {
     if (!db) return;
     try {
       const ids = (await (await fetch(HN_TOP)).json()) as number[];
       const top = ids.slice(0, 10);
+      const items: { id: number; title: string; url: string | null; text?: string }[] = [];
       for (const id of top) {
-        const item = (await (await fetch(HN_ITEM(id))).json()) as { title?: string; url?: string } | null;
+        const item = (await (await fetch(HN_ITEM(id))).json()) as { title?: string; url?: string; text?: string } | null;
         if (!item?.title) continue;
-        const title = String(item.title).slice(0, 200);
-        const url = item.url ?? null;
+        items.push({
+          id,
+          title: String(item.title).slice(0, 200),
+          url: item.url ?? null,
+          text: item.text,
+        });
+      }
+      const now = new Date().toISOString();
+      const needSummary = items.filter((i) => !summaryFromText(i.text) && i.url?.startsWith("http"));
+      // Skip articles we already have a summary for (avoids re-calling Gemini every 15 min)
+      const existing = execAll<{ id: number; summary: string }>("SELECT id, summary FROM news WHERE summary IS NOT NULL AND summary != ''");
+      const hasSummary = new Set(existing.filter((r) => r.summary?.trim()).map((r) => r.id));
+      const toFetch = needSummary.filter((i) => !hasSummary.has(i.id));
+      // Cap AI calls: max 3 per fetch to stay under free tier (~250–500 RPD)
+      const maxAI = parseInt(process.env.AI_NEWS_SUMMARIES_PER_FETCH || "3", 10) || 3;
+      const capped = toFetch.slice(0, Math.max(0, maxAI));
+      const summaryResults = await Promise.allSettled(
+        capped.map((i) => fetchArticleSummary(i.url!, i.title))
+      );
+      const summaryByIndex = new Map(capped.map((_, idx) => [capped[idx].id, summaryResults[idx]]));
+      const existingById = new Map(existing.map((r) => [r.id, r.summary]));
+      for (const i of items) {
+        let summary = summaryFromText(i.text);
+        if (!summary) summary = existingById.get(i.id) ?? null;
+        if (!summary) {
+          const res = summaryByIndex.get(i.id);
+          if (res?.status === "fulfilled" && res.value) summary = res.value;
+        }
         db.run(
-          "INSERT OR IGNORE INTO news (id, title, url, source, created_at) VALUES (:id, :title, :url, :source, :created_at)",
-          { ":id": id, ":title": title, ":url": url, ":source": "hackernews", ":created_at": new Date().toISOString() }
+          `INSERT INTO news (id, title, url, source, created_at, summary) VALUES (:id, :title, :url, :source, :created_at, :summary)
+           ON CONFLICT(id) DO UPDATE SET title = excluded.title, url = excluded.url, summary = excluded.summary`,
+          { ":id": i.id, ":title": i.title, ":url": i.url, ":source": "hackernews", ":created_at": now, ":summary": summary }
         );
       }
       saveDb();

@@ -12,7 +12,7 @@ import { ScannerTab } from "./components/tabs/ScannerTab";
 import { ChatMessage } from "./components/chat/ChatMessage";
 import { HoldingsAccordion } from "./components/sidebar/HoldingsAccordion";
 import { MarketPulseAccordion } from "./components/sidebar/MarketPulseAccordion";
-import { TechNewsList } from "./components/sidebar/TechNewsList";
+import { TechNewsTab } from "./components/tabs/TechNewsTab";
 import { BuildPhaseList } from "./components/sidebar/BuildPhaseList";
 import { API, SUGGESTED_PROMPTS, FALLBACK_TICKERS, DASHBOARD_POLL_MS, signalColors } from "./config";
 import type { Message, Signal, Dashboard, Memory } from "./types";
@@ -265,7 +265,7 @@ export default function App() {
               <span style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)" }}>{online ? "SERVER ONLINE" : "SERVER OFFLINE"}</span>
             </div>
             <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 4 }}>
-              {["chat", "portfolio", "signals", "scanner", "backtest", "briefing", "memory"].map(t => (
+              {["chat", "portfolio", "signals", "scanner", "backtest", "briefing", "news", "memory"].map(t => (
                 <button key={t} onClick={() => setActiveTab(t)} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontFamily: "var(--mono)", cursor: "pointer", border: "none", background: activeTab === t ? "rgba(0,255,148,0.12)" : "transparent", color: activeTab === t ? "#00ff94" : "#555", transition: "all 0.2s" }}>
                   {t.toUpperCase()}
                 </button>
@@ -301,7 +301,6 @@ export default function App() {
               onToggle={() => setMarketPulseOpen((o) => !o)}
               refreshTrigger={sidebarRefreshTrigger}
             />
-            <TechNewsList news={dashboard?.news ?? []} />
             <BuildPhaseList />
           </aside>
 
@@ -401,6 +400,8 @@ export default function App() {
               />
             ) : activeTab === "briefing" ? (
               <BriefingTab />
+            ) : activeTab === "news" ? (
+              <TechNewsTab />
             ) : activeTab === "memory" ? (
               <MemoryTab memories={memories} dashboard={dashboard} onRefresh={loadMemories} onDelete={deleteMemory} />
             ) : (

@@ -7,7 +7,7 @@
 import { Router, Request, Response } from "express";
 
 type PriceRow = { symbol: string; price: number; change_24h: number | null; source: string; updated_at: string };
-type NewsRow = { id: number; title: string; url: string | null; source: string; created_at: string };
+type NewsRow = { id: number; title: string; url: string | null; source: string; created_at: string; summary?: string | null };
 type RiskContext = {
   suggested_position_size_pct: number;
   stop_loss_pct: number;
@@ -93,7 +93,10 @@ export function createDashboardRouter(ctx: DbContext): Router {
   });
 
   router.get("/news", (req: Request, res: Response) => {
-    const news = execAll<NewsRow>("SELECT id, title, url, source, created_at FROM news ORDER BY created_at DESC LIMIT 15");
+    const daysParam = parseInt(String(req.query.days || ""), 10);
+    const days = daysParam > 0 ? Math.min(daysParam, 30) : 15;
+    const sql = `SELECT id, title, url, source, created_at, summary FROM news WHERE created_at >= date('now', '-${days} days') ORDER BY created_at DESC`;
+    const news = execAll<NewsRow>(sql);
     res.json(news);
   });
 
@@ -102,7 +105,7 @@ export function createDashboardRouter(ctx: DbContext): Router {
     const tickers = pulseEntries.map((e) => e.ticker);
     const allPrices = execAll<PriceRow>("SELECT symbol, price, change_24h, source, updated_at FROM prices ORDER BY symbol");
     const prices = tickers.length > 0 ? allPrices.filter((p) => tickers.includes(p.symbol)) : allPrices;
-    const news = execAll<NewsRow>("SELECT id, title, url, source, created_at FROM news ORDER BY created_at DESC LIMIT 10");
+    const news = execAll<NewsRow>("SELECT id, title, url, source, created_at, summary FROM news ORDER BY created_at DESC LIMIT 10");
     const signals = execAll<{ ticker: string; signal: string; reasoning: string; price: number; created_at: string; indicator_data: string | null }>(
       "SELECT ticker, signal, reasoning, price, created_at, indicator_data FROM signals ORDER BY created_at DESC LIMIT 50"
     );

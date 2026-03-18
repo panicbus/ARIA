@@ -216,7 +216,8 @@ async function start() {
       title TEXT NOT NULL,
       url TEXT,
       source TEXT NOT NULL,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      summary TEXT
     );
 
     CREATE TABLE IF NOT EXISTS briefings (
@@ -304,6 +305,7 @@ async function start() {
   alter("ALTER TABLE memories ADD COLUMN source TEXT");
   alter("ALTER TABLE memories ADD COLUMN created_at TEXT");
   alter("ALTER TABLE briefings ADD COLUMN type TEXT NOT NULL DEFAULT 'morning'");
+  alter("ALTER TABLE news ADD COLUMN summary TEXT");
   // Backfill type from created_at (Pacific: hour < 12 = morning, else evening)
   const pacificHour = (iso: string) =>
     parseInt(new Date(iso).toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false }), 10);
