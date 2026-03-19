@@ -3,6 +3,7 @@
  */
 
 import nodemailer from "nodemailer";
+import { marked } from "marked";
 import { generateText } from "./gemini";
 
 type BriefingRow = { id: number; content: string; created_at: string; type: "morning" | "evening" };
@@ -28,7 +29,11 @@ async function sendBriefingEmail(content: string, subject: string): Promise<bool
   const host = process.env.SMTP_HOST?.trim();
   const user = process.env.SMTP_USER?.trim();
   const pass = process.env.SMTP_PASS?.trim();
-  if (!to || !host || !user || !pass) return false;
+  if (!to || !host || !user || !pass) {
+    const missing = [to ? null : "BRIEFING_EMAIL_TO", host ? null : "SMTP_HOST", user ? null : "SMTP_USER", pass ? null : "SMTP_PASS"].filter(Boolean);
+    console.warn("Briefing email skipped: missing env vars:", missing.join(", "));
+    return false;
+  }
 
   try {
     const transporter = nodemailer.createTransport({
@@ -37,13 +42,31 @@ async function sendBriefingEmail(content: string, subject: string): Promise<bool
       secure: process.env.SMTP_SECURE === "true",
       auth: { user, pass },
     });
+    const htmlBody = await Promise.resolve(marked.parse(content));
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>
+body{font-family:system-ui,-apple-system,sans-serif;line-height:1.5;color:#333;max-width:600px;margin:0 auto;padding:16px}
+h1,h2,h3{color:#111;margin-top:1.2em;margin-bottom:0.5em}
+h2{font-size:1.1em;border-bottom:1px solid #ddd;padding-bottom:4px}
+ul,ol{margin:0.5em 0;padding-left:1.5em}
+li{margin:0.25em 0}
+strong{color:#000}
+a{color:#0066cc}
+</style></head>
+<body>
+${htmlBody}
+</body>
+</html>`;
     await transporter.sendMail({
       from: process.env.SMTP_FROM?.trim() || user,
       to,
       subject,
       text: content,
-      html: content.replace(/\n/g, "<br>"),
+      html,
     });
+    console.log("Briefing email sent to", to);
     return true;
   } catch (e) {
     console.error("Briefing email failed:", e);
@@ -106,7 +129,7 @@ export function createBriefingGenerators(deps: BriefingDeps) {
     const userPrompt = `Write a concise morning briefing for Nico based on the live market data, signals, news, and memory below.
 ${worthWatchingSection}
 Include:
-- Market summary for watched tickers (BTC, UBER, SPY, LTBR, GDX, GOLD)
+- Market Overview: summarize ONLY the tickers in the live data below (Nico's holdings, watchlist, and top scanner picks). Do not mention tickers not listed.
 - When Nico has real crypto positions (from Robinhood in the live data): include his actual P&L, buying power, and one sentence on whether either position warrants attention today
 - Top signals with plain-English reasoning (not just BUY/SELL labels — explain why, reference RSI/MACD/MAs when available)
 - For each signal recommendation: suggested position size %, stop-loss level %, and a one-sentence plain-English risk statement (e.g. "Risk 5% of portfolio, cut losses at -3%")

@@ -10,7 +10,7 @@ import { createFetchAndStoreOHLCV } from "./services/ohlcv";
 import { createRunBacktest } from "./services/backtest";
 import { createLiveDataFetchers } from "./services/liveData";
 import { createGenerateSignals, createGenerateSignalForTicker } from "./services/signals";
-import { createBuildLiveContext, createBuildMemoryContext, createGetRiskContextForTicker } from "./services/context";
+import { createBuildLiveContext, createBuildBriefingLiveContext, createBuildMemoryContext, createGetRiskContextForTicker } from "./services/context";
 import { createBriefingGenerators, sendBriefingEmail } from "./services/briefings";
 import { createScannerService } from "./services/scanner";
 import { createHandleToolCall, createRunMemoryExtraction } from "./services/chatTools";
@@ -367,6 +367,12 @@ async function start() {
     cryptoIds: CRYPTO_COINGECKO_IDS,
   });
 
+  const buildBriefingLiveContext = createBuildBriefingLiveContext({
+    execAll,
+    getWatchedTickers,
+    getScannerSymbols: () => scannerService.getTopPicks(0).map((p) => p.symbol),
+  });
+
   const { generateBriefing, generateEveningBriefing } = createBriefingGenerators({
     db,
     execAll,
@@ -376,7 +382,7 @@ async function start() {
     fetchStocks,
     fetchHN,
     generateSignals,
-    buildLiveContext,
+    buildLiveContext: buildBriefingLiveContext,
     buildMemoryContext,
     getScannerTopPicks: () => scannerService.getTopPicks(3),
   });
@@ -514,41 +520,43 @@ async function start() {
   setInterval(fetchHN, NEWS_INTERVAL_MS);
   setInterval(generateSignals, SIGNAL_INTERVAL_MS);
 
-  // DB backup — 3am on 1st and 15th of each month (~every 14 days)
+  const TZ = "America/Los_Angeles";
+
+  // DB backup — 3am Pacific on 1st and 15th of each month (~every 14 days)
   cron.schedule("0 3 1,15 * *", () => {
     backupDb();
-  });
+  }, { timezone: TZ });
 
-  // OHLCV refresh — daily at 06:00, before 8am briefing (Alphavantage free tier: 25 req/day)
+  // OHLCV refresh — daily at 06:00 Pacific, before 8am briefing (Alphavantage free tier: 25 req/day)
   cron.schedule("0 6 * * *", () => {
     fetchAndStoreOHLCV().catch((err) => console.error("OHLCV refresh failed:", err));
-  });
+  }, { timezone: TZ });
 
-  // Scanner — daily at 07:00, before 8am briefing (scans universe, runs ARIA filter)
+  // Scanner — daily at 07:00 Pacific, before 8am briefing (scans universe, runs ARIA filter)
   cron.schedule("0 7 * * *", () => {
     scannerService.runScan().catch((err) => console.error("Scanner failed:", err));
-  });
+  }, { timezone: TZ });
 
-  // Morning briefing — every weekday at 08:00 local time
-  cron.schedule("0 8 * * 1-5", () => {
-    generateBriefing().catch((err) => {
-      console.error("Scheduled briefing failed:", err);
-    });
-  });
-
-  // Evening briefing — every weekday at 18:00 (6pm). Delivered by email if SMTP configured.
-  cron.schedule("0 18 * * 1-5", async () => {
+  // Morning briefing — every weekday at 08:00 Pacific. Delivered by email if SMTP configured.
+  cron.schedule("0 8 * * 1-5", async () => {
     try {
-      const briefing = await generateEveningBriefing();
+      const briefing = await generateBriefing();
       if (briefing?.content) {
-        const sent = await sendBriefingEmail(briefing.content, `ARIA Evening Briefing — ${new Date().toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}`);
-        if (sent) console.log("Evening briefing sent by email");
-        else console.log("Evening briefing stored (email not configured)");
+        const sent = await sendBriefingEmail(briefing.content, `ARIA Morning Briefing — ${new Date().toLocaleDateString("en-US", { timeZone: TZ })}`);
+        if (sent) console.log("Morning briefing sent by email");
+        else console.log("Morning briefing stored (email not configured)");
       }
     } catch (err) {
-      console.error("Evening briefing failed:", err);
+      console.error("Morning briefing failed:", err);
     }
-  });
+  }, { timezone: TZ });
+
+  // Evening briefing — every weekday at 18:00 (6pm) Pacific (no email)
+  cron.schedule("0 18 * * 1-5", () => {
+    generateEveningBriefing().catch((err) => {
+      console.error("Evening briefing failed:", err);
+    });
+  }, { timezone: TZ });
 }
 
 start().catch((err) => {

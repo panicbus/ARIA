@@ -142,7 +142,7 @@ export function BriefingTab() {
         {displayBriefing ? (
           <>
             <div style={{ fontSize: 14, color: "#666", fontFamily: "var(--mono)", marginBottom: 12 }}>
-              {briefingTypeTab === "morning" ? "Morning" : "Evening"} Briefing · {formatDateShort(displayBriefing.created_at)} · {formatMilitary(displayBriefing.created_at)}
+              {briefingTypeTab === "morning" ? "Morning" : "Evening"} Briefing · {formatDateShort(displayBriefing.created_at)} · {formatMilitary(displayBriefing.created_at)} PT
             </div>
             <div style={{ fontSize: 17, lineHeight: 1.65, color: "#ccc", fontFamily: "var(--body)" }}>
               <MarkdownContent content={displayBriefing.content} />

@@ -58,7 +58,7 @@ export default function App() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
-  const [holdingsOpen, setHoldingsOpen] = useState(false);
+  const [holdingsOpen, setHoldingsOpen] = useState(true);
   const [ohlcvRefreshAll, setOhlcvRefreshAll] = useState(false);
   const [marketPulseOpen, setMarketPulseOpen] = useState(true);
   const [sidebarRefreshTrigger, setSidebarRefreshTrigger] = useState(0);

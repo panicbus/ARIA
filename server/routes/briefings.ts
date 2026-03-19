@@ -27,6 +27,41 @@ export function createBriefingsRouter(ctx: DbContext): Router {
     res.json(briefings);
   });
 
+  // GET /api/briefings/email-test — send a test email to verify SMTP config
+  router.get("/email-test", async (req: Request, res: Response) => {
+    const to = process.env.BRIEFING_EMAIL_TO?.trim();
+    const host = process.env.SMTP_HOST?.trim();
+    const user = process.env.SMTP_USER?.trim();
+    const pass = process.env.SMTP_PASS?.trim();
+    const missing = [];
+    if (!to) missing.push("BRIEFING_EMAIL_TO");
+    if (!host) missing.push("SMTP_HOST");
+    if (!user) missing.push("SMTP_USER");
+    if (!pass) missing.push("SMTP_PASS");
+    if (missing.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "SMTP not configured",
+        missing,
+        hint: "Add these to .env (see .env.example). Restart the server after changing.",
+      });
+    }
+    try {
+      const subject = `ARIA Test Email — ${new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles" })}`;
+      const content = "This is a test email from ARIA. If you received this, briefing email delivery is working.";
+      const sent = await sendBriefingEmail(content, subject);
+      if (sent) {
+        res.json({ ok: true, message: "Test email sent to " + to });
+      } else {
+        res.status(500).json({ ok: false, error: "sendBriefingEmail returned false (check server logs)" });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("Email test failed:", e);
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
   router.delete("/", (req: Request, res: Response) => {
     db.run("DELETE FROM briefings");
     saveDb();
@@ -39,7 +74,8 @@ export function createBriefingsRouter(ctx: DbContext): Router {
       if (!briefing) {
         return res.status(500).json({ error: "Failed to generate briefing" });
       }
-      res.json(briefing);
+      const sent = await sendBriefingEmail(briefing.content, `ARIA Morning Briefing — ${new Date().toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}`);
+      res.json({ ...briefing, email_sent: sent });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Briefing generation error:", message);
@@ -57,8 +93,7 @@ export function createBriefingsRouter(ctx: DbContext): Router {
       if (!briefing) {
         return res.status(500).json({ error: "Failed to generate evening briefing" });
       }
-      const sent = await sendBriefingEmail(briefing.content, `ARIA Evening Briefing — ${new Date().toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}`);
-      res.json({ ...briefing, email_sent: sent });
+      res.json(briefing);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Evening briefing error:", message);

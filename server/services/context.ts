@@ -2,6 +2,73 @@
  * Context builders for chat and briefings: live data, memory, risk framing.
  */
 
+type BriefingContextDeps = {
+  execAll: ContextDeps["execAll"];
+  getWatchedTickers: () => string[];
+  getScannerSymbols: () => string[];
+};
+
+export function createBuildBriefingLiveContext(deps: BriefingContextDeps): () => string {
+  const { execAll, getWatchedTickers, getScannerSymbols } = deps;
+
+  return function buildBriefingLiveContext(): string {
+    const watched = new Set(getWatchedTickers().map((t) => t.toUpperCase()));
+    getScannerSymbols().forEach((t) => watched.add(t.toUpperCase()));
+    const tickers = Array.from(watched);
+
+    const allPrices = execAll<{ symbol: string; price: number; change_24h: number | null }>(
+      "SELECT symbol, price, change_24h FROM prices ORDER BY symbol"
+    );
+    const prices = allPrices.filter((p) => tickers.includes(p.symbol.toUpperCase()));
+
+    const allSignals = execAll<{ ticker: string; signal: string; reasoning: string | null }>(
+      "SELECT ticker, signal, reasoning FROM signals ORDER BY created_at DESC LIMIT 50"
+    );
+    const signals = allSignals.filter((s) => tickers.includes(s.ticker.toUpperCase()));
+
+    const portfolio = execAll<{
+      symbol: string;
+      quantity: number;
+      cost_basis: number;
+      average_buy_price: number;
+      current_price: number;
+      market_value: number;
+      unrealized_pnl: number;
+      unrealized_pnl_pct: number;
+      buying_power: number | null;
+      source: string;
+    }>("SELECT symbol, quantity, cost_basis, average_buy_price, current_price, market_value, unrealized_pnl, unrealized_pnl_pct, buying_power, source FROM crypto_portfolio ORDER BY symbol");
+
+    const tz = process.env.TZ || "America/Los_Angeles";
+    const asOf = new Date().toLocaleString("en-US", { timeZone: tz });
+
+    const portfolioBlock =
+      portfolio.length > 0 && !portfolio.every((p) => p.source === "robinhood_stale")
+        ? `
+CRYPTO PORTFOLIO (Robinhood):
+${portfolio
+  .map(
+    (p) =>
+      `${p.symbol}: ${p.quantity} @ avg $${p.average_buy_price} | now $${p.current_price} | P&L $${p.unrealized_pnl} (${p.unrealized_pnl_pct.toFixed(1)}%) | value $${p.market_value}`
+  )
+  .join("\n")}
+Buying Power: $${portfolio[0]?.buying_power ?? 0}`
+        : "";
+
+    return `
+
+LIVE DATA — holdings, watchlist, and scanner picks only (as of ${asOf}):
+
+PRICES:
+${prices.length > 0 ? prices.map((p) => `${p.symbol}: $${p.price} (${p.change_24h != null ? (p.change_24h >= 0 ? "+" : "") + Number(p.change_24h).toFixed(1) + "% 24h" : "—"})`).join("\n") : "(No prices for these tickers yet)"}
+${portfolioBlock}
+
+LATEST SIGNALS (filtered):
+${signals.length > 0 ? signals.map((s) => `${s.ticker}: ${s.signal} — ${s.reasoning ?? ""}`).join("\n") : "(No signals for these tickers yet)"}
+`;
+  };
+}
+
 export type RiskContext = {
   suggested_position_size_pct: number;
   stop_loss_pct: number;
