@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 
 import { API } from "../../config";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import type { NewsRow } from "../../types";
 
 const TZ = "America/Los_Angeles";
@@ -47,6 +48,7 @@ function groupByDay(news: NewsRow[], maxPerDay: number): Map<string, NewsRow[]> 
 
 export function TechNewsTab() {
   const [news, setNews] = useState<NewsRow[]>([]);
+  const isMobile = useIsMobile();
 
   const load = () => {
     fetch(`${API}/news?days=5`)
@@ -64,7 +66,7 @@ export function TechNewsTab() {
   const byDay = groupByDay(news, 6);
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 24 }}>
+    <div className="tab-news" style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 24 }}>
       <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 4 }}>
         TECH NEWS
       </div>
@@ -99,6 +101,7 @@ export function TechNewsTab() {
                 {articles.map((n) => (
                   <a
                     key={n.id}
+                    className="news-article"
                     href={n.url ?? `https://news.ycombinator.com/item?id=${n.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -115,14 +118,16 @@ export function TechNewsTab() {
                       fontFamily: "var(--body)",
                       transition: "background 0.15s, border-color 0.15s",
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "rgba(0,255,148,0.06)";
-                      e.currentTarget.style.borderColor = "rgba(0,255,148,0.2)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-                      e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)";
-                    }}
+                    {...(!isMobile && {
+                      onMouseEnter: (e: React.MouseEvent<HTMLAnchorElement>) => {
+                        e.currentTarget.style.background = "rgba(0,255,148,0.06)";
+                        e.currentTarget.style.borderColor = "rgba(0,255,148,0.2)";
+                      },
+                      onMouseLeave: (e: React.MouseEvent<HTMLAnchorElement>) => {
+                        e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+                        e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)";
+                      },
+                    })}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                       {isLessThan1DayOld(n.created_at) && (
@@ -142,10 +147,11 @@ export function TechNewsTab() {
                           NEW
                         </span>
                       )}
-                      <span style={{ fontSize: 16, lineHeight: 1.5, flex: 1, minWidth: 0 }}>{n.title}</span>
+                      <span className="news-title" style={{ fontSize: 16, lineHeight: 1.5, flex: 1, minWidth: 0 }}>{n.title}</span>
                     </div>
                     {n.summary && (
                       <div
+                        className="news-summary"
                         style={{
                           fontSize: 13,
                           opacity: 0.8,

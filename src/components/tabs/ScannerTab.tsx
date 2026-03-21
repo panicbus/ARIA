@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { API } from "../../config";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { signalColors } from "../../config";
 import type { ScannerResult, ScannerStatus } from "../../types";
 
@@ -53,6 +54,7 @@ export function ScannerTab({
   const [infoOpen, setInfoOpen] = useState(false);
   const [companyNames, setCompanyNames] = useState<Record<string, string>>({});
   const infoRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   // Fetch company names for symbols in results (any ticker, from Finnhub via backend)
   const fetchedRef = useRef<Set<string>>(new Set());
@@ -165,7 +167,7 @@ export function ScannerTab({
   );
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16, position: "relative" }}>
+    <div className="tab-scanner" style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16, position: "relative" }}>
       <div ref={infoRef} style={{ position: "relative" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
@@ -199,6 +201,7 @@ export function ScannerTab({
         </div>
         {infoOpen && (
           <div
+            className="info-tooltip"
             style={{
               position: "absolute",
               top: 0,
@@ -210,6 +213,9 @@ export function ScannerTab({
               boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
             }}
           >
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+              <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
+            </div>
             {metricsExplainer}
           </div>
         )}
@@ -258,7 +264,7 @@ export function ScannerTab({
         <span style={{ fontSize: 15, color: "#666", fontFamily: "var(--mono)" }}>
           Watching {status?.universeSize ?? 0} stocks
         </span>
-        <div style={{ display: "flex", gap: 4 }}>
+        <div className="scanner-filter-pills" style={{ display: "flex", gap: 4 }}>
           {(["ALL", "STRONG BUY", "BUY", "UNUSUAL MOVE"] as FilterPill[]).map((p) => (
             <button
               key={p}
@@ -340,6 +346,7 @@ export function ScannerTab({
             {filterResults(topPicks, filter).map((r) => (
               <div
                 key={r.id}
+                className="scanner-card"
                 style={{
                   background: "rgba(255,255,255,0.03)",
                   border: "1px solid rgba(255,255,255,0.07)",
@@ -417,24 +424,26 @@ export function ScannerTab({
                 <div style={{ fontSize: 16, color: "#aaa", lineHeight: 1.5, marginBottom: 12, fontFamily: "var(--body)" }}>
                   {r.aria_reasoning?.trim() || "Technical indicators only — no ARIA summary for this scan."}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                   <button
+                    className="scanner-watchlist-btn"
                     onClick={() => addToWatchlist(r.symbol)}
                     disabled={addingTicker === r.symbol}
                     style={{
-                      fontSize: 15,
+                      fontSize: isMobile ? 10 : 15,
                       fontFamily: "var(--mono)",
-                      padding: "5px 12px",
-                      borderRadius: 8,
-                      border: "1px solid rgba(0,255,148,0.4)",
-                      background: "transparent",
-                      color: "#00ff94",
+                      padding: isMobile ? "5px 10px" : "5px 12px",
+                      borderRadius: isMobile ? 6 : 8,
+                      background: isMobile ? "rgba(255,255,255,0.05)" : "transparent",
+                      border: isMobile ? "0.5px solid rgba(255,255,255,0.12)" : "1px solid rgba(0,255,148,0.4)",
+                      color: isMobile ? "#777" : "#00ff94",
                       cursor: addingTicker === r.symbol ? "wait" : "pointer",
                     }}
                   >
-                    {addingTicker === r.symbol ? "Adding…" : "Add to Watchlist"}
+                    {addingTicker === r.symbol ? "Adding…" : isMobile ? "+ watchlist" : "Add to Watchlist"}
                   </button>
                   <button
+                    className="scanner-backtest-btn"
                     onClick={() => onViewBacktest?.(r.symbol)}
                     style={{
                       fontSize: 15,
@@ -458,7 +467,7 @@ export function ScannerTab({
 
       {/* Full results accordion */}
       {results.length > 0 && (
-        <div style={{ marginTop: 16 }}>
+        <div className="scanner-full-results" style={{ marginTop: 16 }}>
           <button
             onClick={() => setFullResultsOpen((o) => !o)}
             style={{
@@ -479,7 +488,8 @@ export function ScannerTab({
             {fullResultsOpen ? "▼" : "▶"} All {results.length} results
           </button>
           {fullResultsOpen && (
-            <div style={{ overflowX: "auto", marginTop: 8 }}>
+            <>
+            <div style={{ overflowX: "auto", marginTop: 8 }} className="scanner-full-results-table">
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 15, fontFamily: "var(--mono)" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.15)" }}>
@@ -521,6 +531,18 @@ export function ScannerTab({
                 </tbody>
               </table>
             </div>
+            <div className="scanner-mobile-results" style={{ display: "none", marginTop: 8 }}>
+              {allFiltered.map((r) => (
+                <div key={r.id} className="scanner-result-row">
+                  <span>{r.symbol}</span>
+                  <span style={{ color: signalColors[r.signal] ?? "#888" }}>{r.signal}</span>
+                  <span>{r.score > 0 ? "+" : ""}{r.score}</span>
+                  <span>${Number(r.price).toLocaleString()}</span>
+                  <span>{r.change_24h != null ? `${r.change_24h >= 0 ? "+" : ""}${r.change_24h.toFixed(1)}%` : "—"}</span>
+                </div>
+              ))}
+            </div>
+            </>
           )}
         </div>
       )}

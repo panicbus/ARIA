@@ -53,7 +53,7 @@ export function SignalsTab({
   }, [infoOpen]);
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+    <div className="tab-signals" style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
       <div ref={infoRef} style={{ position: "relative" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
           <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)" }}>LIVE SIGNALS</div>
@@ -80,6 +80,7 @@ export function SignalsTab({
         </div>
         {infoOpen && (
           <div
+            className="info-tooltip"
             style={{
               position: "absolute",
               top: 0,
@@ -91,6 +92,9 @@ export function SignalsTab({
               boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
             }}
           >
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+              <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
+            </div>
             {signalsExplainer}
           </div>
         )}
@@ -107,21 +111,32 @@ export function SignalsTab({
             const maPos = ind?.ma20 != null && ind?.ma50 != null && s.price
               ? (s.price > ind.ma20 && s.price > ind.ma50 ? "above both" : s.price > ind.ma20 ? "above 20 only" : s.price < ind.ma20 && s.price < ind.ma50 ? "below both" : "below 20 only")
               : null;
+            const score = ind?.score ?? 0;
             return (
-              <div key={s.id} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 16px" }}>
+              <div key={s.id} className="signal-card" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 16px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, flexWrap: "wrap", gap: 8 }}>
                   <span style={{ fontFamily: "var(--display)", fontWeight: 700, color: "#f0f0f0" }}>{s.ticker}</span>
                   <span style={{ fontSize: 11, fontFamily: "var(--mono)", padding: "2px 8px", borderRadius: 20, background: `${(signalColors[s.signal] ?? "#888")}18`, border: `1px solid ${(signalColors[s.signal] ?? "#888")}40`, color: signalColors[s.signal] ?? "#888" }}>{s.signal}</span>
                 </div>
                 <div style={{ fontSize: 12, color: "#888", fontFamily: "var(--body)", marginBottom: 6 }}>{s.reasoning}</div>
                 {ind && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 6, fontSize: 11, fontFamily: "var(--mono)" }}>
+                  <div className="signal-indicators" style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 6, fontSize: 11, fontFamily: "var(--mono)" }}>
                     {ind.rsi != null && <span style={{ color: rsiColor }}>RSI {ind.rsi.toFixed(0)} {ind.rsi > 70 ? "(overbought)" : ind.rsi < 30 ? "(oversold)" : "(neutral)"}</span>}
                     {macdDir && <span style={{ color: macdDir === "bullish" ? "#00ff94" : "#ff4757" }}>MACD {macdDir}</span>}
                     {maPos && <span style={{ color: "#888" }}>MA {maPos}</span>}
                     {ind.score != null && <span style={{ color: "#00ff94" }}>Score {ind.score > 0 ? "+" : ""}{ind.score}/6</span>}
                   </div>
                 )}
+                <div className="signal-score-bar" style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, marginBottom: 6, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      width: `${((score + 6) / 12) * 100}%`,
+                      height: "100%",
+                      background: score >= 0 ? "linear-gradient(90deg, #00ff94, #00d4aa)" : "linear-gradient(90deg, #ff4757, #ff6b81)",
+                      transition: "width 0.3s",
+                    }}
+                  />
+                </div>
                 {rc && (
                   <div style={{ fontSize: 11, color: "#666", fontFamily: "var(--mono)", marginBottom: 4 }}>
                     Risk: {rc.suggested_position_size_pct}% size · stop {rc.stop_loss_pct}% · take-profit {rc.take_profit_pct}%

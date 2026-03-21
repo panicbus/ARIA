@@ -127,6 +127,7 @@ export function BacktestTab({
         </div>
         {infoOpen && (
           <div
+            className="info-tooltip"
             style={{
               position: "absolute",
               top: 0,
@@ -138,6 +139,9 @@ export function BacktestTab({
               boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
             }}
           >
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+              <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
+            </div>
             {backtestExplainer}
           </div>
         )}

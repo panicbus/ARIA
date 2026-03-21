@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 
 import { API, MEMORY_SECTIONS, RISK_OPTIONS, SIGNALS_OPTIONS } from "../../config";
+import { useIsMobile } from "../../hooks/useIsMobile";
 
 const TZ = "America/Los_Angeles";
 const formatTs = (iso: string) =>
@@ -75,6 +76,7 @@ export function MemoryTab({
   const [newWatchlist, setNewWatchlist] = useState("");
   const [infoOpen, setInfoOpen] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!infoOpen) return;
@@ -192,7 +194,7 @@ export function MemoryTab({
   );
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="tab-memory" style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)" }}>MEMORY</div>
         <div ref={infoRef} style={{ display: "flex", alignItems: "center", gap: 10, position: "relative" }}>
@@ -225,15 +227,30 @@ export function MemoryTab({
           ))}
           {infoOpen && (
             <div
+              className="info-tooltip"
               style={{
-                position: "absolute", top: "100%", right: 0, marginTop: 8,
-                width: 640, padding: 16,
-                background: "#141414", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10,
+                position: isMobile ? "fixed" : "absolute",
+                top: isMobile ? 16 : "100%",
+                left: isMobile ? 16 : undefined,
+                right: isMobile ? 16 : 0,
+                marginTop: isMobile ? 0 : 8,
+                width: isMobile ? undefined : 640,
+                maxWidth: isMobile ? "calc(100vw - 32px)" : undefined,
+                padding: 16,
+                background: "#141414",
+                border: "1px solid rgba(255,255,255,0.15)",
+                borderRadius: 10,
                 boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
-                fontSize: 14, lineHeight: 1.5, color: "#ccc", fontFamily: "var(--body)",
+                fontSize: 14,
+                lineHeight: 1.5,
+                color: "#ccc",
+                fontFamily: "var(--body)",
                 zIndex: 50,
               }}
             >
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+                <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
+              </div>
               <div style={{ marginBottom: 14 }}>
                 <div style={{ fontWeight: 700, color: "#00ff94", marginBottom: 6 }}>Portfolio</div>
                 <p style={{ margin: 0, color: "#bbb" }}>
@@ -403,7 +420,7 @@ export function MemoryTab({
               <div style={{ color: "#555", fontSize: 12, fontFamily: "var(--mono)" }}>No context memories. Chat with ARIA; she will extract facts over time.</div>
             ) : (
               contextMemories.map((m) => (
-                <div key={m.key} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "12px 14px" }}>
+                <div key={m.key} className="memory-card" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "12px 14px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                     <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "#00ff94", fontSize: 12 }}>{m.key}</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -437,7 +454,7 @@ export function MemoryTab({
       )}
 
       {/* Footer */}
-      <div style={{ display: "flex", gap: 10, marginTop: "auto", paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="memory-export-import" style={{ display: "flex", gap: 10, marginTop: "auto", paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <input ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={importJson} />
         {btn("Import JSON", () => importInputRef.current?.click(), "primary")}
         {btn("Export JSON", exportJson, "primary")}

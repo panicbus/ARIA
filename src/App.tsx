@@ -1,21 +1,20 @@
 import React, { useState, useEffect, useRef } from "react";
 
-import { HoldingsCard } from "./components/holdings/HoldingsCard";
-import { TypingIndicator } from "./components/ui/TypingIndicator";
 import { StatusDot } from "./components/ui/StatusDot";
-import { MetricCard } from "./components/ui/MetricCard";
 import { BacktestTab } from "./components/tabs/BacktestTab";
 import { BriefingTab } from "./components/tabs/BriefingTab";
 import { PortfolioTab } from "./components/tabs/PortfolioTab";
 import { MemoryTab } from "./components/tabs/MemoryTab";
 import { ScannerTab } from "./components/tabs/ScannerTab";
-import { ChatMessage } from "./components/chat/ChatMessage";
+import { ChatTab } from "./components/chat/ChatTab";
 import { HoldingsAccordion } from "./components/sidebar/HoldingsAccordion";
 import { MarketPulseAccordion } from "./components/sidebar/MarketPulseAccordion";
 import { TechNewsTab } from "./components/tabs/TechNewsTab";
 import { SignalsTab } from "./components/tabs/SignalsTab";
 import { BuildPhaseList } from "./components/sidebar/BuildPhaseList";
-import { API, SUGGESTED_PROMPTS, FALLBACK_TICKERS, DASHBOARD_POLL_MS } from "./config";
+import { MobileNav } from "./components/nav/MobileNav";
+import { useIsMobile } from "./hooks/useIsMobile";
+import { API, FALLBACK_TICKERS, DASHBOARD_POLL_MS } from "./config";
 import type { Message, Signal, Dashboard, Memory } from "./types";
 
 const TZ = "America/Los_Angeles";
@@ -28,6 +27,7 @@ const formatTimeLA = (iso?: string) =>
   (iso ? new Date(iso) : new Date()).toLocaleTimeString("en-US", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
 
 export default function App() {
+  const isMobile = useIsMobile();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -65,16 +65,6 @@ export default function App() {
   const [sidebarRefreshTrigger, setSidebarRefreshTrigger] = useState(0);
   const [backtestPreselectedTicker, setBacktestPreselectedTicker] = useState<string | null>(null);
   const [quickMode, setQuickMode] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = `${Math.min(ta.scrollHeight, 280)}px`;
-  }, [input]);
-
   const loadHistory = React.useCallback(() => {
     fetch(`${API}/history?t=${Date.now()}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.resolve([])))
@@ -161,12 +151,6 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    if (activeTab === "chat") {
-      bottomRef.current?.scrollIntoView({ behavior: "auto" });
-    }
-  }, [messages, loading, activeTab]);
-
   const clearChat = async () => {
     try {
       await fetch(`${API}/history`, { method: "DELETE" });
@@ -187,7 +171,7 @@ export default function App() {
       const res = await fetch(`${API}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText, quick: quickMode }),
+        body: JSON.stringify({ message: userText, quick: quickMode, quickMode }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -249,24 +233,24 @@ export default function App() {
         .resize-handle:hover { background: rgba(0,255,148,0.08) !important; }
       `}</style>
 
-      <div style={{ minHeight: "100vh", height: "100vh", background: "#0a0a0a", display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
+      <div className="aria-root" style={{ minHeight: "100vh", height: "100vh", background: "#0a0a0a", display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
 
         {/* Grid bg */}
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none", backgroundImage: "linear-gradient(rgba(0,255,148,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,148,0.025) 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
 
         {/* Header */}
-        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)", backdropFilter: "blur(10px)", position: "sticky", top: 0, zIndex: 10 }}>
+        <header className="aria-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)", backdropFilter: "blur(10px)", position: "sticky", top: 0, zIndex: 10 }}>
           <div>
             <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "0.15em", fontFamily: "var(--display)", background: "linear-gradient(135deg, #00ff94, #00d4aa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>ARIA</div>
-            <div style={{ fontSize: 9, color: "#444", letterSpacing: "0.1em", fontFamily: "var(--mono)" }}>AUTONOMOUS RESEARCH & INTELLIGENCE ASSISTANT</div>
+            <div className="aria-subtitle" style={{ fontSize: 9, color: "#444", letterSpacing: "0.1em", fontFamily: "var(--mono)" }}>AUTONOMOUS RESEARCH & INTELLIGENCE ASSISTANT</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <StatusDot active={online} />
-              <span style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)" }}>{online ? "SERVER ONLINE" : "SERVER OFFLINE"}</span>
+              <span style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)" }}>{online ? (isMobile ? "online" : "SERVER ONLINE") : (isMobile ? "offline" : "SERVER OFFLINE")}</span>
             </div>
-            <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 4 }}>
-              {["chat", "portfolio", "signals", "scanner", "backtest", "briefing", "news", "memory"].map(t => (
+            <div className="aria-top-tabs" style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 4 }}>
+              {["chat", "portfolio", "signals", "scanner", "backtest", "briefing", "news", "memory"].map((t) => (
                 <button key={t} onClick={() => setActiveTab(t)} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontFamily: "var(--mono)", cursor: "pointer", border: "none", background: activeTab === t ? "rgba(0,255,148,0.12)" : "transparent", color: activeTab === t ? "#00ff94" : "#555", transition: "all 0.2s" }}>
                   {t.toUpperCase()}
                 </button>
@@ -276,10 +260,10 @@ export default function App() {
         </header>
 
         {/* Body */}
-        <div style={{ display: "flex", flex: 1, height: "calc(100vh - 65px)", overflow: "hidden" }}>
+        <div className="aria-body" style={{ display: "flex", flex: 1, height: "calc(100vh - 65px)", overflow: "hidden" }}>
 
           {/* Sidebar */}
-          <aside style={{ width: sidebarWidth, flexShrink: 0, display: "flex", flexDirection: "column", gap: 18, overflowY: "auto", height: "100%", minHeight: 0, padding: 18 }}>
+          <aside className="aria-sidebar" style={{ width: sidebarWidth, flexShrink: 0, display: "flex", flexDirection: "column", gap: 18, overflowY: "auto", height: "100%", minHeight: 0, padding: 18 }}>
             <HoldingsAccordion
               memories={memories}
               dashboard={dashboard}
@@ -307,7 +291,7 @@ export default function App() {
 
           {/* Resize handle — drag to resize left/right panels */}
           <div
-            className="resize-handle"
+            className="aria-resize-handle resize-handle"
             onMouseDown={(e) => {
               resizeStartRef.current = { x: e.clientX, w: sidebarWidth };
               setResizing(true);
@@ -334,7 +318,7 @@ export default function App() {
           </div>
 
           {/* Main: Portfolio, Chat, Signals, Briefing */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+          <div className="aria-main aria-content" style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
             {activeTab === "portfolio" ? (
               <PortfolioTab
                 dashboard={dashboard}
@@ -365,92 +349,23 @@ export default function App() {
             ) : activeTab === "memory" ? (
               <MemoryTab memories={memories} dashboard={dashboard} onRefresh={loadMemories} onDelete={deleteMemory} />
             ) : (
-              <>
-            <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
-              {messages.map((msg, i) => (
-                <ChatMessage key={msg.id ?? i} msg={msg} />
-              ))}
-              {loading && (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", alignSelf: "flex-start" }}>
-                  <div style={{ borderRadius: "14px 14px 14px 3px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                    <TypingIndicator />
-                  </div>
-                </div>
-              )}
-              <div ref={bottomRef} />
-            </div>
-
-            {/* Input */}
-            <div style={{ padding: "14px 24px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-              <div style={{ display: "flex", gap: 7, marginBottom: 10, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                  {SUGGESTED_PROMPTS.map((p, i) => (
-                    <button key={i} className="chip" onClick={() => setInput(p.text)} style={{ fontSize: 11, padding: "4px 11px", borderRadius: 20, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#777", cursor: "pointer", fontFamily: "var(--mono)", transition: "all 0.15s" }}>
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-                {messages.length > 0 && (
-                  <button
-                    onClick={clearChat}
-                    title="Clear chat window (keeps ARIA's memory — positions, watchlist, preferences)"
-                    style={{ fontSize: 11, padding: "4px 11px", borderRadius: 20, background: "transparent", border: "1px solid rgba(255,255,255,0.08)", color: "#555", cursor: "pointer", fontFamily: "var(--mono)", transition: "all 0.15s" }}
-                  >
-                    Clear chat
-                  </button>
-                )}
-              </div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <button
-                  type="button"
-                  onClick={() => setQuickMode((q) => !q)}
-                  title="Brief answers without fetching data (faster)"
-                  style={{
-                    fontSize: 11,
-                    padding: "6px 14px",
-                    borderRadius: 20,
-                    border: quickMode ? "1px solid rgba(0,255,148,0.5)" : "1px solid rgba(255,255,255,0.08)",
-                    background: quickMode ? "rgba(0,255,148,0.2)" : "rgba(255,255,255,0.04)",
-                    color: quickMode ? "#00ff94" : "#777",
-                    cursor: "pointer",
-                    fontFamily: "var(--mono)",
-                    fontWeight: quickMode ? 600 : 400,
-                    transition: "all 0.15s",
-                    flexShrink: 0,
-                  }}
-                >
-                  Quick
-                </button>
-                <textarea
-                  ref={textareaRef}
-                  style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 11, padding: "11px 15px", color: "#f0f0f0", fontSize: 14, outline: "none", fontFamily: "var(--body)", resize: "none", minHeight: 44, height: 44, boxSizing: "border-box", overflow: "hidden" }}
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                  placeholder={online ? "Ask ARIA anything..." : "Start the server with: npm run dev"}
-                  onFocus={e => (e.target.style.borderColor = "rgba(0,255,148,0.4)")}
-                  onBlur={e => (e.target.style.borderColor = "rgba(255,255,255,0.1)")}
-                  rows={1}
-                />
-                <button
-                  onClick={() => sendMessage()}
-                  disabled={loading || !input.trim()}
-                  style={{ background: "linear-gradient(135deg, #00ff94, #00d4aa)", border: "none", borderRadius: 10, height: 44, padding: "0 20px", margin: 0, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#0a0a0a", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--display)", letterSpacing: "0.05em", opacity: loading || !input.trim() ? 0.4 : 1, transition: "opacity 0.2s", flexShrink: 0, boxSizing: "border-box" }}
-                >
-                  SEND
-                </button>
-              </div>
-            </div>
-            </>
+              <ChatTab
+                messages={messages}
+                loading={loading}
+                input={input}
+                setInput={setInput}
+                quickMode={quickMode}
+                setQuickMode={setQuickMode}
+                online={online}
+                onSend={sendMessage}
+                onClearChat={clearChat}
+              />
             )}
           </div>
         </div>
       </div>
+
+      {isMobile && <MobileNav activeTab={activeTab} onTabChange={setActiveTab} />}
     </>
   );
 }

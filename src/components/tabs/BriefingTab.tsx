@@ -92,17 +92,18 @@ export function BriefingTab() {
   const hasNewer = briefingArchiveOffset > 0;
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="tab-briefing" style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 4 }}>BRIEFINGS</div>
       {briefingError && (
         <div style={{ padding: "14px 18px", background: "rgba(255,71,87,0.1)", border: "1px solid rgba(255,71,87,0.3)", borderRadius: 8, fontSize: 16, color: "#ff6b6b", fontFamily: "var(--mono)" }}>
           {briefingError}
         </div>
       )}
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+      <div className="briefing-buttons" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
         {(["morning", "evening"] as const).map((tab) => (
           <button
             key={tab}
+            className={`briefing-btn briefing-btn-${tab} ${briefingTypeTab === tab ? "briefing-btn-active" : ""}`}
             onClick={() => {
               setBriefingTypeTab(tab);
               setSelectedBriefingId(null);
@@ -138,7 +139,7 @@ export function BriefingTab() {
           {briefingGenerating ? "Generating…" : "Generate now"}
         </button>
       </div>
-      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "16px 18px" }}>
+      <div className="briefing-content" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "16px 18px" }}>
         {displayBriefing ? (
           <>
             <div style={{ fontSize: 14, color: "#666", fontFamily: "var(--mono)", marginBottom: 12 }}>

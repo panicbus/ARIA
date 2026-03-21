@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 
 import { API, DASHBOARD_POLL_MS, signalColors } from "../../config";
+import { useIsMobile } from "../../hooks/useIsMobile";
+import { MetricCard } from "../ui/MetricCard";
 import type { CryptoPortfolioHolding, Dashboard } from "../../types";
 
 const TZ = "America/Los_Angeles";
@@ -49,6 +51,7 @@ export function PortfolioTab({
   const [infoOpen, setInfoOpen] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
   const ariaTakeFetchedAt = useRef(0);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!infoOpen) return;
@@ -158,6 +161,7 @@ export function PortfolioTab({
       </div>
       {infoOpen && (
         <div
+          className="info-tooltip"
           style={{
             position: "absolute",
             top: 0,
@@ -169,6 +173,9 @@ export function PortfolioTab({
             boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
           }}
         >
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+            <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
+          </div>
           {glossaryTooltip}
         </div>
       )}
@@ -180,9 +187,9 @@ export function PortfolioTab({
       ? "Could not load portfolio from Robinhood. Check the server console for API errors. Possible causes: wrong endpoint format, invalid signing, or no BTC/ETH positions in your account."
       : "Add your Robinhood API credentials to .env to see your live crypto portfolio here. Until then, ARIA is watching BTC and ETH market prices via CoinGecko.";
     return (
-      <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="tab-portfolio" style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
         <HeaderRow />
-          <div
+        <div
           style={{
             padding: 32,
             textAlign: "center",
@@ -198,6 +205,7 @@ export function PortfolioTab({
         </div>
         {credentialsConfigured && (
           <button
+            className="portfolio-refresh-btn"
             onClick={handleRefresh}
             disabled={refreshing}
             style={{
@@ -220,44 +228,95 @@ export function PortfolioTab({
   }
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="tab-portfolio" style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
       <HeaderRow />
 
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16, marginBottom: 8 }}>
-        <div style={{ fontSize: 14, fontFamily: "var(--mono)", color: "#888" }}>
-          Total Crypto Value: <span style={{ color: "#00ff94", fontWeight: 700 }}>${(summary?.total_crypto_value ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+      {isMobile ? (
+        <>
+          <div className="portfolio-header-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+            <MetricCard
+              label="Total value"
+              value={`$${(summary?.total_crypto_value ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+            />
+            <MetricCard
+              label="Buying power"
+              value={`$${(summary?.buying_power ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+            />
+            <MetricCard
+              label="P&L $"
+              value={`${(summary?.total_unrealized_pnl ?? 0) >= 0 ? "+" : ""}$${(summary?.total_unrealized_pnl ?? 0).toFixed(2)}`}
+            />
+            <MetricCard
+              label="P&L %"
+              value={`${(summary?.total_unrealized_pnl_pct ?? 0) >= 0 ? "+" : ""}${(summary?.total_unrealized_pnl_pct ?? 0).toFixed(1)}%`}
+            />
+          </div>
+          <div style={{ fontSize: 11, fontFamily: "var(--mono)", color: "#444", marginBottom: 4 }}>
+            Last updated: {summary?.last_updated ? formatTs(summary.last_updated) : "—"}
+            {isStale && <span style={{ color: "#ffd32a", marginLeft: 8 }}>⚠ Last known data</span>}
+          </div>
+          <button
+            className="portfolio-refresh-btn"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            style={{
+              fontSize: 13,
+              fontFamily: "var(--mono)",
+              padding: "10px 16px",
+              borderRadius: 10,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(255,255,255,0.05)",
+              color: "#ccc",
+              cursor: refreshing ? "wait" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              width: "100%",
+            }}
+          >
+            <span style={{ fontSize: 16 }}>↻</span>
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+        </>
+      ) : (
+        <div className="portfolio-header-grid" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16, marginBottom: 8 }}>
+          <div style={{ fontSize: 14, fontFamily: "var(--mono)", color: "#888" }}>
+            Total Crypto Value: <span style={{ color: "#00ff94", fontWeight: 700 }}>${(summary?.total_crypto_value ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div style={{ fontSize: 14, fontFamily: "var(--mono)", color: "#888" }}>
+            Unrealized P&L:{" "}
+            <span style={{ color: (summary?.total_unrealized_pnl ?? 0) >= 0 ? "#00ff94" : "#ff4757", fontWeight: 700 }}>
+              ${(summary?.total_unrealized_pnl ?? 0).toFixed(2)} ({(summary?.total_unrealized_pnl_pct ?? 0) >= 0 ? "+" : ""}
+              {(summary?.total_unrealized_pnl_pct ?? 0).toFixed(1)}%)
+            </span>
+          </div>
+          <div style={{ fontSize: 14, fontFamily: "var(--mono)", color: "#888" }}>
+            Buying Power: <span style={{ color: "#ccc" }}>${(summary?.buying_power ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div style={{ fontSize: 12, fontFamily: "var(--mono)", color: "#444" }}>
+            Last updated: {summary?.last_updated ? formatTs(summary.last_updated) : "—"}
+            {isStale && <span style={{ color: "#ffd32a", marginLeft: 8 }}>⚠ Last known data</span>}
+          </div>
+          <button
+            className="portfolio-refresh-btn"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            style={{
+              fontSize: 12,
+              fontFamily: "var(--mono)",
+              padding: "5px 12px",
+              borderRadius: 8,
+              border: "1px solid rgba(0,255,148,0.4)",
+              background: refreshing ? "rgba(0,255,148,0.1)" : "transparent",
+              color: "#00ff94",
+              cursor: refreshing ? "wait" : "pointer",
+            }}
+          >
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
         </div>
-        <div style={{ fontSize: 14, fontFamily: "var(--mono)", color: "#888" }}>
-          Unrealized P&L:{" "}
-          <span style={{ color: (summary?.total_unrealized_pnl ?? 0) >= 0 ? "#00ff94" : "#ff4757", fontWeight: 700 }}>
-            ${(summary?.total_unrealized_pnl ?? 0).toFixed(2)} ({(summary?.total_unrealized_pnl_pct ?? 0) >= 0 ? "+" : ""}
-            {(summary?.total_unrealized_pnl_pct ?? 0).toFixed(1)}%)
-          </span>
-        </div>
-        <div style={{ fontSize: 14, fontFamily: "var(--mono)", color: "#888" }}>
-          Buying Power: <span style={{ color: "#ccc" }}>${(summary?.buying_power ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-        </div>
-        <div style={{ fontSize: 12, fontFamily: "var(--mono)", color: "#444" }}>
-          Last updated: {summary?.last_updated ? formatTs(summary.last_updated) : "—"}
-          {isStale && <span style={{ color: "#ffd32a", marginLeft: 8 }}>⚠ Last known data</span>}
-        </div>
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          style={{
-            fontSize: 12,
-            fontFamily: "var(--mono)",
-            padding: "5px 12px",
-            borderRadius: 8,
-            border: "1px solid rgba(0,255,148,0.4)",
-            background: refreshing ? "rgba(0,255,148,0.1)" : "transparent",
-            color: "#00ff94",
-            cursor: refreshing ? "wait" : "pointer",
-          }}
-        >
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
-      </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {holdings.map((h) => {
@@ -266,6 +325,7 @@ export function PortfolioTab({
           return (
             <div
               key={h.symbol}
+              className="holding-card"
               style={{
                 background: "rgba(255,255,255,0.03)",
                 border: "1px solid rgba(255,255,255,0.07)",
@@ -320,7 +380,7 @@ export function PortfolioTab({
                   </span>
                 </div>
               </div>
-              {onViewBacktest && (
+              {onViewBacktest && !isMobile && (
                 <button
                   onClick={() => onViewBacktest(h.symbol)}
                   style={{
@@ -370,6 +430,35 @@ export function PortfolioTab({
           ) : (
             <div style={{ color: "#666", fontSize: 13 }}>Unable to load ARIA&apos;s take.</div>
           )}
+        </div>
+      )}
+
+      {isMobile && dashboard && (
+        <div className="market-pulse-mobile">
+          <div style={{ fontSize: 8, letterSpacing: "0.12em", color: "#444", textTransform: "uppercase", fontFamily: "var(--mono)", marginBottom: 8 }}>
+            Market Pulse
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {(dashboard.prices || [])
+              .filter((p) => ["SPY", "BTC", "ETH", "AMD", "AMZN", "NET", "NEE"].includes(p.symbol))
+              .map((p) => (
+                <MetricCard
+                  key={p.symbol}
+                  label={p.symbol}
+                  value={
+                    p.price >= 1000
+                      ? "$" + p.price.toLocaleString("en-US", { maximumFractionDigits: 0 })
+                      : "$" + Number(p.price).toFixed(2)
+                  }
+                  sub={
+                    p.change_24h != null
+                      ? (p.change_24h >= 0 ? "↑" : "↓") + Math.abs(p.change_24h).toFixed(1) + "% 24h"
+                      : undefined
+                  }
+                  signal={dashboard.signalsByTicker?.[p.symbol]?.signal}
+                />
+              ))}
+          </div>
         </div>
       )}
     </div>

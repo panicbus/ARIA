@@ -15,6 +15,7 @@ export const ChatMessage = React.memo(({ msg }: { msg: Message }) => (
     }}
   >
     <div
+      className="chat-bubble"
       style={{
         padding: "11px 15px",
         borderRadius: msg.role === "user" ? "14px 14px 3px 14px" : "14px 14px 14px 3px",

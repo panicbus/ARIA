@@ -34,9 +34,9 @@ export function createChatRouter(deps: ChatDeps): Router {
   } = deps;
 
   router.post("/chat", async (req: Request, res: Response) => {
-    const { message, quick } = req.body;
+    const { message, quick, quickMode } = req.body;
     if (!message) return res.status(400).json({ error: "Message required" });
-    const useQuickMode = quick === true;
+    const useQuickMode = quick === true || quickMode === true;
 
     db.run("INSERT INTO messages (role, content) VALUES (:role, :content)", {
       ":role": "user",
@@ -105,7 +105,9 @@ export function createChatRouter(deps: ChatDeps): Router {
       });
       saveDb();
 
-      runMemoryExtraction(message, reply).catch((e) => console.warn("Memory extraction:", e));
+      if (!useQuickMode) {
+        runMemoryExtraction(message, reply).catch((e) => console.warn("Memory extraction:", e));
+      }
 
       res.json({ reply });
     } catch (err: unknown) {
