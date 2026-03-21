@@ -87,6 +87,7 @@ type BriefingDeps = {
   generateSignals: () => void;
   buildLiveContext: () => string;
   buildMemoryContext: () => string;
+  getWatchedTickers: () => string[];
   getScannerTopPicks?: () => Array<{ symbol: string; signal: string; score: number; aria_reasoning: string | null; price: number }>;
 };
 
@@ -102,7 +103,7 @@ export function createBriefingGenerators(deps: BriefingDeps) {
     generateSignals,
     buildLiveContext,
     buildMemoryContext,
-    getScannerTopPicks,
+    getWatchedTickers,
   } = deps;
 
   async function generateBriefing(): Promise<BriefingRow | null> {
@@ -116,34 +117,186 @@ export function createBriefingGenerators(deps: BriefingDeps) {
     await fetchHN();
     generateSignals();
 
-    const liveContext = buildLiveContext();
     const memoryContext = buildMemoryContext();
-    const scannerPicks = getScannerTopPicks?.() ?? [];
-    const worthWatchingSection =
-      scannerPicks.length > 0
-        ? `\n--- Worth Watching Today (Scanner picks, score ≥+3) ---\n${scannerPicks
-            .map((p) => `${p.symbol}: ${p.signal} (score +${p.score}/6) — ${p.aria_reasoning ?? "—"}`)
-            .join("\n")}\n\nInclude 2-3 of the strongest in the briefing under a "Worth Watching Today" section. Keep it to 2 sentences per pick — ticker, signal, and one reason why. If no strong picks exist, skip that section.\n`
-        : "\n(No scanner picks with score ≥+3 — skip Worth Watching Today section.)\n";
 
-    const userPrompt = `Write a concise morning briefing for Nico based on the live market data, signals, news, and memory below.
-${worthWatchingSection}
-Include:
-- Market Overview: summarize ONLY the tickers in the live data below (Nico's holdings, watchlist, and top scanner picks). Do not mention tickers not listed.
-- When Nico has real crypto positions (from Robinhood in the live data): include his actual P&L, buying power, and one sentence on whether either position warrants attention today
-- Top signals with plain-English reasoning (not just BUY/SELL labels — explain why, reference RSI/MACD/MAs when available)
-- For each signal recommendation: suggested position size %, stop-loss level %, and a one-sentence plain-English risk statement (e.g. "Risk 5% of portfolio, cut losses at -3%")
-- Notable tech news from HN
-- One specific actionable recommendation for Nico with a brief explanation of why
-- 2–3 concrete action items for today
+    // WAYPOINT [briefing-data-fetch]
+    // WHAT: Pull watchlist signals, scanner picks, notable movers, and crypto portfolio for briefing.
+    // WHY: Briefings must surface insights from a wider set of tickers — not just Nico's fixed watchlist.
+    // HOW: Three tiers — watchlist, scanner top picks (discovery), notable movers (±3 score).
+    const watchlistSignals = execAll<{
+      ticker: string;
+      signal: string;
+      reasoning: string | null;
+      price: number;
+      indicator_data: string | null;
+      created_at: string;
+    }>(
+      `SELECT ticker, signal, reasoning, price, indicator_data, created_at FROM signals
+       WHERE ticker IN (SELECT DISTINCT symbol FROM prices)
+       ORDER BY created_at DESC LIMIT 20`
+    );
 
-Keep it under 400 words. Frame every recommendation with risk context (suggested size, stop-loss); never overstate certainty. Use "indicators suggest" not "you should".
+    const scannerPicks = execAll<{
+      symbol: string;
+      signal: string;
+      score: number;
+      rsi: number | null;
+      macd_histogram: number | null;
+      aria_reasoning: string | null;
+      category: string;
+      scanned_at: string;
+    }>(
+      `SELECT symbol, signal, score, rsi, macd_histogram, aria_reasoning, category, scanned_at
+       FROM scanner_results
+       WHERE aria_reasoning IS NOT NULL AND aria_reasoning != ''
+         AND scanned_at >= datetime('now', '-2 days')
+       ORDER BY score DESC
+       LIMIT 10`
+    );
 
-Risk sizing guide (from Nico's risk_tolerance in memory): conservative = max 5% per position, stop -3%; moderate = 10%, stop -5%; aggressive = 20%, stop -8%. Default to moderate if not specified.
+    const notableMovers = execAll<{
+      symbol: string;
+      signal: string;
+      score: number;
+      rsi: number | null;
+      macd_histogram: number | null;
+      category: string;
+      scanned_at: string;
+    }>(
+      `SELECT symbol, signal, score, rsi, macd_histogram, category, scanned_at
+       FROM scanner_results
+       WHERE (score >= 3 OR score <= -3)
+         AND scanned_at >= datetime('now', '-2 days')
+         AND (aria_reasoning IS NULL OR aria_reasoning = '')
+       ORDER BY ABS(score) DESC
+       LIMIT 8`
+    );
 
-${liveContext}
+    const portfolio = execAll<{
+      symbol: string;
+      current_price: number;
+      unrealized_pnl_pct: number;
+      market_value: number;
+    }>(
+      `SELECT symbol, current_price, unrealized_pnl_pct, market_value
+       FROM crypto_portfolio
+       ORDER BY market_value DESC`
+    );
+
+    const news = execAll<{
+      id: number;
+      title: string;
+      url: string | null;
+      summary: string | null;
+      created_at: string;
+    }>(
+      `SELECT id, title, url, summary, created_at FROM news
+       WHERE title IS NOT NULL
+       ORDER BY created_at DESC
+       LIMIT 5`
+    );
+
+    const newsBlock =
+      news.length > 0
+        ? news
+            .map(
+              (n) =>
+                `- Title: ${n.title}\n  Summary: ${n.summary && n.summary.trim() ? n.summary : "No summary"}\n  Link: ${n.url ?? "—"}`
+            )
+            .join("\n\n")
+        : "(No notable tech news from Hacker News available.)";
+
+    console.log("Briefing data: scannerPicks=", scannerPicks.length, "notableMovers=", notableMovers.length, "news=", news.length);
+
+    // WAYPOINT [briefing-freshness]
+    // WHAT: Extract tickers mentioned in yesterday's briefing to avoid repetition.
+    // WHY: Day-to-day variety — Worth Watching and Top Signals should feel different.
+    // HOW: Parse yesterday's content for 2-5 char uppercase words, filter to known tickers.
+    let recentlyMentioned: string[] = [];
+    const watchedSet = new Set(getWatchedTickers().map((t) => t.toUpperCase()));
+    const scannerSymbols = new Set([...scannerPicks, ...notableMovers].map((r) => r.symbol.toUpperCase()));
+    const knownTickers = new Set([...watchedSet, ...scannerSymbols, ...portfolio.map((p) => p.symbol.toUpperCase())]);
+
+    const yesterdayBriefing = execAll<{ content: string }>(
+      `SELECT content FROM briefings
+       WHERE date(created_at) = date('now', '-1 day')
+       ORDER BY created_at DESC
+       LIMIT 1`
+    );
+    if (yesterdayBriefing.length) {
+      const matches = yesterdayBriefing[0].content.match(/\b[A-Z]{2,5}\b/g) || [];
+      recentlyMentioned = [...new Set(matches.map((m) => m.toUpperCase()))].filter((t) => knownTickers.has(t));
+    }
+
+    const freshnessRule =
+      recentlyMentioned.length > 0
+        ? `
+FRESHNESS RULE:
+These tickers were highlighted yesterday — avoid featuring them again in Worth Watching or Top Signals unless something significant changed (e.g. signal flipped from HOLD to STRONG BUY):
+${recentlyMentioned.join(", ")}
+`
+        : "";
+
+    const scannerNote =
+      scannerPicks.length === 0 && notableMovers.length === 0
+        ? "\n(Scanner data is empty — scan may not have run yet. Focus on watchlist data only. Note briefly if relevant.)\n"
+        : "";
+
+    const userPrompt = `You are ARIA, Nico's personal market intelligence assistant.
+Write a morning briefing that is specific, varied, and actionable. Never repeat the same observations two days in a row — always find something fresh to highlight.
+
+DISCOVERY OPPORTUNITIES (from market scan — put these FIRST in Top Signals and Worth Watching when present):
+
+TIER 2 — SCANNER TOP PICKS (broader market, up to 50 stocks scanned):
+${JSON.stringify(scannerPicks)}
+These are ARIA's highest-conviction picks. OUTSIDE Nico's current watchlist — pure discovery.
+
+TIER 3 — NOTABLE MOVERS (strong signals ±3):
+${JSON.stringify(notableMovers)}
+Bullish (score ≥3) or bearish (score ≤-3) from today's scan.
+${scannerNote}
+
+TIER 1 — NICO'S PORTFOLIO & WATCHLIST:
+${JSON.stringify(watchlistSignals)}
+His holdings and watchlist. Cover briefly — focus only on what CHANGED or is notable TODAY.
+
+CRYPTO PORTFOLIO:
+${JSON.stringify(portfolio)}
+
+TECH NEWS (Hacker News):
+${newsBlock}
 ${memoryContext}
-`;
+${freshnessRule}
+
+Write the briefing in these sections:
+
+## Good Morning
+One sentence on overall market tone today. Make it specific — reference an actual data point.
+
+## Your Portfolio
+Cover Nico's holdings only if something notable happened. If everything is flat, say so in one sentence and move on.
+
+## Top Signals Today
+Pull the 3 strongest signals from ALL THREE tiers — MUST include scanner picks when available. For each: ticker, signal, composite score (if available), one sentence of plain English reasoning. Label: [WATCHLIST] [SCANNER] [MOVER].
+
+## Worth Watching
+2-3 discovery picks from Tier 2 or Tier 3 that Nico does NOT own or watch. When scanner data exists, this section MUST contain scanner tickers — never only watchlist tickers.
+
+## Tech News
+Summarize 1-2 of the most relevant HN stories from the Tech News block above. If none, say "No notable tech news from Hacker News available."
+
+## Market Pulse
+One paragraph on the broader theme across the data. What sector is strong? What's weak? Be analytical, not generic.
+
+## Action Items
+Two specific, concrete things Nico could do today. Reference specific tickers and conditions. Never give generic advice.
+
+RULES:
+- Maximum 400 words total
+- Never say "as of my last update" or similar hedging
+- Never repeat yesterday's action items
+- Always reference actual numbers from the data
+- Frame everything as "indicators suggest" — never present as financial advice`;
 
     const systemInstruction = "You are ARIA writing a sharp, no-fluff morning briefing for Nico. Be direct, structured, and concrete. Use short sections and bullets.";
     const content = (await generateText(userPrompt, systemInstruction)).trim();
@@ -172,50 +325,174 @@ ${memoryContext}
     await fetchHN();
     generateSignals();
 
-    const liveContext = buildLiveContext();
     const memoryContext = buildMemoryContext();
 
-    const [upsideSearch, newsSearch, techSearch] = await Promise.all([
-      tavilySearch("stocks to watch tomorrow analyst picks momentum upgrades", 5),
-      tavilySearch("earnings calendar this week Fed meeting economic data releases market moving events", 5),
-      tavilySearch("tech stocks AI industry news today", 4),
-    ]);
+    // Same data fetches as morning briefing (WAYPOINT [briefing-data-fetch])
+    const watchlistSignals = execAll<{
+      ticker: string;
+      signal: string;
+      reasoning: string | null;
+      price: number;
+      indicator_data: string | null;
+      created_at: string;
+    }>(
+      `SELECT ticker, signal, reasoning, price, indicator_data, created_at FROM signals
+       WHERE ticker IN (SELECT DISTINCT symbol FROM prices)
+       ORDER BY created_at DESC LIMIT 20`
+    );
 
-    const formatResults = (results: Array<{ title: string; url: string; content: string }>) =>
-      results.length === 0
-        ? "(No web results — use your knowledge if relevant)"
-        : results.map((r) => `• ${r.title}\n  ${(r.content ?? "").slice(0, 250)}${(r.content ?? "").length > 250 ? "…" : ""}`).join("\n\n");
+    const scannerPicks = execAll<{
+      symbol: string;
+      signal: string;
+      score: number;
+      rsi: number | null;
+      macd_histogram: number | null;
+      aria_reasoning: string | null;
+      category: string;
+      scanned_at: string;
+    }>(
+      `SELECT symbol, signal, score, rsi, macd_histogram, aria_reasoning, category, scanned_at
+       FROM scanner_results
+       WHERE aria_reasoning IS NOT NULL AND aria_reasoning != ''
+         AND scanned_at >= datetime('now', '-2 days')
+       ORDER BY score DESC
+       LIMIT 10`
+    );
 
-    const userPrompt = `Write a concise evening briefing for Nico (6pm). Include these four sections:
+    const notableMovers = execAll<{
+      symbol: string;
+      signal: string;
+      score: number;
+      rsi: number | null;
+      macd_histogram: number | null;
+      category: string;
+      scanned_at: string;
+    }>(
+      `SELECT symbol, signal, score, rsi, macd_histogram, category, scanned_at
+       FROM scanner_results
+       WHERE (score >= 3 OR score <= -3)
+         AND scanned_at >= datetime('now', '-2 days')
+         AND (aria_reasoning IS NULL OR aria_reasoning = '')
+       ORDER BY ABS(score) DESC
+       LIMIT 8`
+    );
 
-## 1. Tickers with upside potential tomorrow
-Use the web search results below. Pick 2–4 tickers that could move up (analyst upgrades, momentum, catalysts). They don't have to be in Nico's watchlist. For each: ticker, brief reason, and one-line risk note.
+    const portfolio = execAll<{
+      symbol: string;
+      current_price: number;
+      unrealized_pnl_pct: number;
+      market_value: number;
+    }>(
+      `SELECT symbol, current_price, unrealized_pnl_pct, market_value
+       FROM crypto_portfolio
+       ORDER BY market_value DESC`
+    );
 
-## 2. Big news with money-making implications
-From the web search: earnings, Fed, economic data, or other events that could move markets. What's coming up and why it matters. Be specific (dates, names).
+    const news = execAll<{
+      id: number;
+      title: string;
+      url: string | null;
+      summary: string | null;
+      created_at: string;
+    }>(
+      `SELECT id, title, url, summary, created_at FROM news
+       WHERE title IS NOT NULL
+       ORDER BY created_at DESC
+       LIMIT 5`
+    );
 
-## 3. Your portfolio snapshot
-From Nico's positions, watchlist in memory, and real Robinhood crypto data (if present): quick take on each holding. Include end-of-day portfolio snapshot with how positions moved. Reference our signals and risk context. Any alerts or suggested tweaks. Keep it tight.
+    const newsBlock =
+      news.length > 0
+        ? news
+            .map(
+              (n) =>
+                `- Title: ${n.title}\n  Summary: ${n.summary && n.summary.trim() ? n.summary : "No summary"}\n  Link: ${n.url ?? "—"}`
+            )
+            .join("\n\n")
+        : "(No notable tech news from Hacker News available.)";
 
-## 4. Tech & AI pulse
-From the web search: notable moves in tech/AI that could affect Nico's work or investments. He's a frontend dev in the Bay Area; surface what's relevant.
+    console.log("Evening briefing data: scannerPicks=", scannerPicks.length, "notableMovers=", notableMovers.length, "news=", news.length);
 
-Keep total under 500 words. Be direct. Use bullets. Frame every recommendation with "indicators suggest" or similar; never guarantee. Risk sizing guide from memory: conservative 5%/-3%, moderate 10%/-5%, aggressive 20%/-8%.
+    // Freshness: avoid repeating yesterday's tickers (WAYPOINT [briefing-freshness])
+    let recentlyMentioned: string[] = [];
+    const watchedSet = new Set(getWatchedTickers().map((t) => t.toUpperCase()));
+    const scannerSymbols = new Set([...scannerPicks, ...notableMovers].map((r) => r.symbol.toUpperCase()));
+    const knownTickers = new Set([...watchedSet, ...scannerSymbols, ...portfolio.map((p) => p.symbol.toUpperCase())]);
 
---- Web search: upside tickers ---
-${formatResults(upsideSearch)}
---- Web search: market-moving news ---
-${formatResults(newsSearch)}
---- Web search: tech/AI ---
-${formatResults(techSearch)}
+    const yesterdayBriefing = execAll<{ content: string }>(
+      `SELECT content FROM briefings
+       WHERE date(created_at) = date('now', '-1 day')
+       ORDER BY created_at DESC
+       LIMIT 1`
+    );
+    if (yesterdayBriefing.length) {
+      const matches = yesterdayBriefing[0].content.match(/\b[A-Z]{2,5}\b/g) || [];
+      recentlyMentioned = [...new Set(matches.map((m) => m.toUpperCase()))].filter((t) => knownTickers.has(t));
+    }
 
---- Live market data ---
-${liveContext}
---- Memory ---
+    const freshnessRule =
+      recentlyMentioned.length > 0
+        ? `
+FRESHNESS RULE:
+These tickers were highlighted yesterday — avoid featuring them again in Scanner Standouts or Tomorrow's Watchlist unless something significant changed:
+${recentlyMentioned.join(", ")}
+`
+        : "";
+
+    const scannerNote =
+      scannerPicks.length === 0 && notableMovers.length === 0
+        ? "\n(Scanner data is empty — focus on watchlist and portfolio data only.)\n"
+        : "";
+
+    const userPrompt = `You are ARIA, Nico's personal market intelligence assistant.
+Write an evening briefing (6pm) that summarizes the day and sets up tomorrow.
+
+DISCOVERY OPPORTUNITIES (from market scan — put these FIRST in Scanner Standouts and Tomorrow's Watchlist):
+
+TIER 2 — SCANNER TOP PICKS:
+${JSON.stringify(scannerPicks)}
+
+TIER 3 — NOTABLE MOVERS:
+${JSON.stringify(notableMovers)}
+${scannerNote}
+
+TIER 1 — NICO'S PORTFOLIO & WATCHLIST:
+${JSON.stringify(watchlistSignals)}
+
+CRYPTO PORTFOLIO:
+${JSON.stringify(portfolio)}
+
+TECH NEWS:
+${newsBlock}
 ${memoryContext}
-`;
+${freshnessRule}
 
-    const systemInstruction = "You are ARIA writing a sharp evening briefing for Nico. Four sections. Direct, concrete, no fluff. Use short bullets.";
+Write the briefing in these sections:
+
+## Market Close Summary
+How did the day end overall — reference actual price/signal changes from the data.
+
+## Your Portfolio Today
+Only note positions that moved meaningfully today. P&L changes, signal flips, RSI crossing thresholds.
+
+## Scanner Standouts
+2-3 tickers from scanner_results with the most interesting movement today. MUST include scanner picks when data exists.
+
+## Tomorrow's Watchlist
+2-3 tickers for tomorrow morning. Draw from scanner picks with strong but not yet extreme RSI.
+
+## Tech News
+1-2 relevant HN stories from the Tech News block. If none, say "No notable tech news available."
+
+## Evening Action Item
+One specific thing to consider before tomorrow's open.
+
+RULES:
+- Maximum 400 words total
+- Frame everything as "indicators suggest" — never present as financial advice
+- Reference actual numbers from the data`;
+
+    const systemInstruction = "You are ARIA writing a sharp evening briefing for Nico. Direct, concrete, no fluff. Use short bullets.";
     const content = (await generateText(userPrompt, systemInstruction)).trim();
     if (!content) return null;
 

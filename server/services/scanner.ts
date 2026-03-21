@@ -283,6 +283,8 @@ export function createScannerService(deps: ScannerDeps) {
 
 Surface the 3-7 most genuinely interesting opportunities. Consider: signal strength, unusual RSI readings, MACD crossovers, and anything that stands out as worth attention.
 
+Prioritize variety across categories — do not return more than 2 picks from the same category (large_cap, growth, small_cap). If you have 3 strong large cap signals, pick the top 2 and find the best growth or small cap pick instead. A varied set of picks is more useful than 5 picks from the same category.
+
 For each pick, write 2-3 sentences of plain English reasoning explaining WHY this is interesting right now.
 
 Also flag any tickers showing unusual negative momentum that Nico should be aware of even if he doesn't own them.

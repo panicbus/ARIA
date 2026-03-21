@@ -382,6 +382,7 @@ async function start() {
     generateSignals,
     buildLiveContext: buildBriefingLiveContext,
     buildMemoryContext,
+    getWatchedTickers,
     getScannerTopPicks: () => scannerService.getTopPicks(3),
   });
 
