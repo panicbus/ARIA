@@ -53,14 +53,13 @@ function buildMarketPulseTickers(execAll: DbContext["execAll"]): MarketPulseEntr
   const legacy = parseWatchlistValue(execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist' LIMIT 1")[0]?.value);
   const watchlistAll = [...core, ...spec.filter((t) => !core.includes(t)), ...legacy.filter((t) => !core.includes(t) && !spec.includes(t))];
   for (const t of watchlistAll) {
-    if (result.filter((e) => e.category === "watchlist").length >= 5) break;
     if (!seen.has(t)) {
       seen.add(t);
       result.push({ ticker: t, category: "watchlist" });
     }
   }
 
-  return result.slice(0, 14);
+  return result.slice(0, 30);
 }
 
 export function createDashboardRouter(ctx: DbContext): Router {

@@ -196,6 +196,7 @@ export default function App() {
     try {
       await fetch(`${API}/memories/${encodeURIComponent(key)}`, { method: "DELETE" });
       setMemories((prev) => prev.filter((m) => m.key !== key));
+      setSidebarRefreshTrigger((t) => t + 1);
     } catch (_) {}
   };
 
@@ -213,6 +214,7 @@ export default function App() {
         body: JSON.stringify({ key: "watchlist", value: updated }),
       });
       loadMemories();
+      setSidebarRefreshTrigger((t) => t + 1);
     } catch (_) {}
   };
 
@@ -347,7 +349,15 @@ export default function App() {
             ) : activeTab === "news" ? (
               <TechNewsTab />
             ) : activeTab === "memory" ? (
-              <MemoryTab memories={memories} dashboard={dashboard} onRefresh={loadMemories} onDelete={deleteMemory} />
+              <MemoryTab
+              memories={memories}
+              dashboard={dashboard}
+              onRefresh={() => {
+                loadMemories();
+                setSidebarRefreshTrigger((t) => t + 1);
+              }}
+              onDelete={deleteMemory}
+            />
             ) : (
               <ChatTab
                 messages={messages}
