@@ -2,6 +2,22 @@ import React, { useState, useEffect, useRef } from "react";
 import { signalColors } from "../../config";
 import type { Signal } from "../../types";
 
+/** Strip JSON-array formatting from ticker (e.g. ["IGPT"] -> IGPT) */
+function displayTicker(t: string): string {
+  if (!t || typeof t !== "string") return t ?? "";
+  const s = t.trim();
+  if (s.startsWith("[") && s.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed) && parsed[0]) return String(parsed[0]).toUpperCase().trim();
+      if (typeof parsed === "string") return parsed.toUpperCase().trim();
+    } catch {
+      return s.replace(/[\[\]"]/g, "").toUpperCase().trim() || s;
+    }
+  }
+  return s.toUpperCase().trim();
+}
+
 const signalsExplainer = (
   <div style={{ padding: 12, maxWidth: 520 }}>
     <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 10, color: "#00ff94", fontFamily: "var(--mono)" }}>What does this show?</div>
@@ -115,7 +131,7 @@ export function SignalsTab({
             return (
               <div key={s.id} className="signal-card" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 16px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, flexWrap: "wrap", gap: 8 }}>
-                  <span style={{ fontFamily: "var(--display)", fontWeight: 700, color: "#f0f0f0" }}>{s.ticker}</span>
+                  <span style={{ fontFamily: "var(--display)", fontWeight: 700, color: "#f0f0f0" }}>{displayTicker(s.ticker)}</span>
                   <span style={{ fontSize: 11, fontFamily: "var(--mono)", padding: "2px 8px", borderRadius: 20, background: `${(signalColors[s.signal] ?? "#888")}18`, border: `1px solid ${(signalColors[s.signal] ?? "#888")}40`, color: signalColors[s.signal] ?? "#888" }}>{s.signal}</span>
                 </div>
                 <div style={{ fontSize: 12, color: "#888", fontFamily: "var(--body)", marginBottom: 6 }}>{s.reasoning}</div>

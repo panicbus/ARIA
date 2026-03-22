@@ -74,6 +74,22 @@ export function MarketPulseAccordion({
   const holdings = items.filter((i) => i.category === "holding");
   const watchlist = items.filter((i) => i.category === "watchlist");
 
+  /** Strip JSON-array formatting from symbol (e.g. ["IGPT"] -> IGPT) */
+  const safeLabel = (s: string) => {
+    if (!s || typeof s !== "string") return s ?? "";
+    const t = s.trim();
+    if (t.startsWith("[") && t.endsWith("]")) {
+      try {
+        const p = JSON.parse(t);
+        if (Array.isArray(p) && p[0]) return String(p[0]).toUpperCase().trim();
+        if (typeof p === "string") return p.toUpperCase().trim();
+      } catch {
+        return t.replace(/[\[\]"]/g, "").toUpperCase().trim() || t;
+      }
+    }
+    return t.toUpperCase().trim();
+  };
+
   const renderCard = (item: MarketPulseItem) => {
     const val =
       item.price != null
@@ -88,7 +104,7 @@ export function MarketPulseAccordion({
     return (
       <MetricCard
         key={item.symbol}
-        label={item.symbol}
+        label={safeLabel(item.symbol)}
         value={val}
         sub={ch || undefined}
         signal={item.signal ?? undefined}

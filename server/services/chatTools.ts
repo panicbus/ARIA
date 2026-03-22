@@ -3,6 +3,7 @@
  */
 
 import { SchemaType } from "@google/generative-ai";
+import { parseWatchlistValue } from "../utils/watchlist";
 import { generateText } from "./gemini";
 
 type PriceRow = { symbol: string; price: number; change_24h: number | null; source: string; updated_at: string };
@@ -247,17 +248,11 @@ export function createHandleToolCall(deps: ChatToolsDeps): (name: string, input:
           const existing = execAll<{ value: string }>(
             `SELECT value FROM memories WHERE key = '${key.replace(/'/g, "''")}' LIMIT 1`
           );
-          if (existing.length && existing[0].value) {
-            try {
-              const currentArray = JSON.parse(existing[0].value);
-              const newArray = JSON.parse(value);
-              if (Array.isArray(currentArray) && Array.isArray(newArray)) {
-                const merged = [...new Set([...currentArray, ...newArray])];
-                value = JSON.stringify(merged);
-              }
-            } catch {
-              /* keep existing value if parse fails */
-            }
+          const currentTickers = parseWatchlistValue(existing[0]?.value);
+          const newTickers = parseWatchlistValue(typeof value === "string" ? value : Array.isArray(value) ? JSON.stringify(value) : "");
+          if (newTickers.length > 0) {
+            const merged = [...new Set([...currentTickers, ...newTickers])];
+            value = JSON.stringify(merged);
           }
         }
 
@@ -297,27 +292,48 @@ export function createHandleToolCall(deps: ChatToolsDeps): (name: string, input:
         if (!query) return { error: "query is required" };
         const key = process.env.TAVILY_API_KEY?.trim();
         if (!key) {
-          console.warn("[web_search] TAVILY_API_KEY not set in .env");
-          return { error: "TAVILY_API_KEY not set in .env. Add it to enable web search." };
+          console.warn("[web_search] TAVILY_API_KEY not set. Add to .env (local) or flyctl secrets (production).");
+          return {
+            error: "Web search is not configured. TAVILY_API_KEY must be set. Local: add to .env. Production (Fly.io): run `flyctl secrets set TAVILY_API_KEY=your-key`. Get a free key at https://tavily.com",
+          };
         }
         const maxResults = typeof input?.max_results === "number" && input.max_results > 0 && input.max_results <= 10 ? input.max_results : 5;
-        try {
-          const res = await fetch("https://api.tavily.com/search", {
+        const doFetch = async (): Promise<Response> => {
+          return fetch("https://api.tavily.com/search", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
             body: JSON.stringify({ query, search_depth: "basic", max_results: maxResults }),
           });
+        };
+        try {
+          let res = await doFetch();
+          // Retry once on rate limit (429) with retry-after delay
+          if (res.status === 429) {
+            const retryAfter = parseInt(res.headers.get("retry-after") ?? "10", 10);
+            const delay = Math.min(Math.max(retryAfter, 2), 60) * 1000;
+            console.warn(`[web_search] Rate limited (429). Retrying in ${delay / 1000}s...`);
+            await new Promise((r) => setTimeout(r, delay));
+            res = await doFetch();
+          }
           const data = (await res.json()) as { results?: Array<{ title: string; url: string; content: string }>; error?: string };
           if (!res.ok) {
             const errMsg = data?.error ?? `Tavily API error ${res.status}`;
             console.warn("[web_search] Tavily API error:", res.status, errMsg);
-            return { error: errMsg };
+            const hint =
+              res.status === 401
+                ? "API key may be invalid or expired. Check https://tavily.com"
+                : res.status === 429
+                  ? "Rate limit exceeded. Free tier: 1K searches/month."
+                  : undefined;
+            return { error: hint ? `${errMsg}. ${hint}` : errMsg };
           }
           return { results: data.results ?? [] };
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           console.warn("[web_search] Request failed:", msg);
-          return { error: `Web search failed: ${msg}` };
+          return {
+            error: `Web search request failed: ${msg}. Check server logs. If deployed on Fly.io, ensure TAVILY_API_KEY is set via flyctl secrets.`,
+          };
         }
       }
       case "get_portfolio": {

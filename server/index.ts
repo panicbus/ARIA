@@ -25,6 +25,7 @@ import { createChatRouter } from "./routes/chat";
 import { createScannerRouter } from "./routes/scanner";
 import { createPortfolioRouter } from "./routes/portfolio";
 import { fetchCryptoPortfolioSummary, logRobinhoodStatus } from "./services/robinhood";
+import { parseWatchlistValue } from "./utils/watchlist";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -119,30 +120,16 @@ function getWatchedTickers(): string[] {
   if (!db) return [...BASE_TICKERS];
   const tickers = new Set<string>(BASE_TICKERS);
 
-  // Read watchlist_core from memories table
+  // Read watchlist_core and watchlist_speculative — use parseWatchlistValue for robust parsing (handles malformed JSON)
   const coreRow = execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist_core' LIMIT 1");
-  if (coreRow.length && coreRow[0].value) {
-    try {
-      const core = JSON.parse(coreRow[0].value);
-      if (Array.isArray(core)) core.forEach((t: string) => tickers.add(String(t).toUpperCase()));
-    } catch (_) {}
-  }
+  parseWatchlistValue(coreRow[0]?.value).forEach((t) => tickers.add(t));
 
-  // Read watchlist_speculative from memories table
   const specRow = execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist_speculative' LIMIT 1");
-  if (specRow.length && specRow[0].value) {
-    try {
-      const spec = JSON.parse(specRow[0].value);
-      if (Array.isArray(spec)) spec.forEach((t: string) => tickers.add(String(t).toUpperCase()));
-    } catch (_) {}
-  }
+  parseWatchlistValue(specRow[0]?.value).forEach((t) => tickers.add(t));
 
-  // Fallback: legacy watchlist (comma-separated) for backward compatibility with Memory tab
+  // Fallback: legacy watchlist (comma-separated) for backward compatibility
   const watchRow = execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist' LIMIT 1");
-  const watchRaw = watchRow[0]?.value?.trim();
-  if (watchRaw) {
-    watchRaw.split(/[\s,]+/).map((s) => s.toUpperCase()).filter((s) => s.length > 0).forEach((t) => tickers.add(t));
-  }
+  parseWatchlistValue(watchRow[0]?.value).forEach((t) => tickers.add(t));
 
   // Read valid position_* keys only (reject position_AVERAGE_COST_X, position_QUANTITY_X)
   const posRows = execAll<{ key: string; value: string }>("SELECT key, value FROM memories WHERE key LIKE 'position_%'");
@@ -445,6 +432,12 @@ async function start() {
     console.log(`  Gemini API key: present (model: ${model})`);
   }
   logRobinhoodStatus();
+  const tavilyKey = process.env.TAVILY_API_KEY?.trim();
+  if (!tavilyKey) {
+    console.warn("  TAVILY_API_KEY not set — web search disabled. Add to .env or flyctl secrets set TAVILY_API_KEY=...");
+  } else {
+    console.log(`  Tavily (web search): configured (${tavilyKey.slice(0, 8)}...)`);
+  }
 
   async function refreshCryptoPortfolio(): Promise<void> {
     const summary = await fetchCryptoPortfolioSummary();
@@ -527,35 +520,46 @@ async function start() {
     backupDb();
   }, { timezone: TZ });
 
-  // OHLCV refresh — daily at 06:00 Pacific, before 8am briefing (Alphavantage free tier: 25 req/day)
+  // OHLCV refresh — daily at 06:00 Pacific, before morning briefing (Alphavantage free tier: 25 req/day)
   cron.schedule("0 6 * * *", () => {
     fetchAndStoreOHLCV().catch((err) => console.error("OHLCV refresh failed:", err));
   }, { timezone: TZ });
 
-  // Scanner — daily at 07:00 Pacific, before 8am briefing (scans universe, runs ARIA filter)
-  cron.schedule("0 7 * * *", () => {
+  // Scanner — daily at 06:30 Pacific, before 7am morning briefing
+  cron.schedule("30 6 * * *", () => {
     scannerService.runScan().catch((err) => console.error("Scanner failed:", err));
   }, { timezone: TZ });
 
-  // Morning briefing — every weekday at 08:00 Pacific. Delivered by email if SMTP configured.
-  cron.schedule("0 8 * * 1-5", async () => {
+  // Morning briefing — every weekday at 07:00 Pacific. Delivered by email if SMTP configured.
+  cron.schedule("0 7 * * 1-5", async () => {
+    const now = new Date().toLocaleString("en-US", { timeZone: TZ });
+    console.log("[cron] Morning briefing triggered at", now);
     try {
       const briefing = await generateBriefing();
       if (briefing?.content) {
         const sent = await sendBriefingEmail(briefing.content, `ARIA Morning Briefing — ${new Date().toLocaleDateString("en-US", { timeZone: TZ })}`);
-        if (sent) console.log("Morning briefing sent by email");
-        else console.log("Morning briefing stored (email not configured)");
+        if (sent) console.log("[cron] Morning briefing sent by email");
+        else console.log("[cron] Morning briefing stored (email not configured)");
       }
     } catch (err) {
-      console.error("Morning briefing failed:", err);
+      console.error("[cron] Morning briefing failed:", err);
     }
   }, { timezone: TZ });
 
-  // Evening briefing — every weekday at 18:00 (6pm) Pacific (no email)
-  cron.schedule("0 18 * * 1-5", () => {
-    generateEveningBriefing().catch((err) => {
-      console.error("Evening briefing failed:", err);
-    });
+  // Evening briefing — every weekday at 20:00 (8pm) Pacific. Delivered by email if SMTP configured.
+  cron.schedule("0 20 * * 1-5", async () => {
+    const now = new Date().toLocaleString("en-US", { timeZone: TZ });
+    console.log("[cron] Evening briefing triggered at", now);
+    try {
+      const briefing = await generateEveningBriefing();
+      if (briefing?.content) {
+        const sent = await sendBriefingEmail(briefing.content, `ARIA Evening Briefing — ${new Date().toLocaleDateString("en-US", { timeZone: TZ })}`);
+        if (sent) console.log("[cron] Evening briefing sent by email");
+        else console.log("[cron] Evening briefing stored (email not configured)");
+      }
+    } catch (err) {
+      console.error("[cron] Evening briefing failed:", err);
+    }
   }, { timezone: TZ });
 }
 

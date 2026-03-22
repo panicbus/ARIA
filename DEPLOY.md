@@ -81,7 +81,7 @@ flyctl open
 | `GEMINI_API_KEY` | Yes | Gemini 2.0 Flash for chat, briefings, memory (free tier) |
 | `ALPHAVANTAGE_API_KEY` | No | OHLCV historical data (25 req/day free) |
 | `FINNHUB_API_KEY` | No | Live stock prices |
-| `TAVILY_API_KEY` | No | Web search in chat |
+| `TAVILY_API_KEY` | No | **Web search in chat** — required for questions about recent news (e.g. Uber/Rivian). Must be set on Fly: `flyctl secrets set TAVILY_API_KEY=tvly-...` |
 | `ROBINHOOD_API_KEY` | No | Crypto portfolio from Robinhood |
 | `ROBINHOOD_PRIVATE_KEY` | No | Robinhood API signing |
 | `BRIEFING_EMAIL_TO` | No | Evening briefing email recipient |
@@ -92,15 +92,37 @@ flyctl open
 - **Path:** `GET /health`
 - **Response:** `{"status":"healthy","timestamp":"..."}`
 
-## Cron Jobs (run in-process)
+## Troubleshooting: Web Search "encountering an issue"
+
+If ARIA says web search is encountering an issue:
+
+1. **Check status:** `curl -s "https://aria-nico.fly.dev/api/web-search-status"` — shows if TAVILY_API_KEY is set and if Tavily API responds.
+2. **Production (Fly):** Secrets are not in `.env` — you must run `flyctl secrets set TAVILY_API_KEY=tvly-your-key`. Get a free key at https://tavily.com (1K searches/month).
+3. **Local:** Ensure `.env` has `TAVILY_API_KEY=tvly-...` and restart the server (`npm run dev`).
+4. **Rate limit (429):** Free tier is 1K/month. The server now retries once with backoff; if you hit the limit often, consider upgrading.
+5. **Invalid key (401):** Regenerate at tavily.com and update the secret.
+
+## Troubleshooting: Briefings not arriving
+
+If morning/evening briefings don't arrive by email:
+
+1. **Check status:** `curl -s "https://aria-nico.fly.dev/api/briefings/status"` — last run times, email config, server time in Pacific.
+2. **Email secrets:** Briefings require `BRIEFING_EMAIL_TO` + `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` (Gmail: use App Password). Set via `flyctl secrets set`.
+3. **Test email:** `curl -s "https://aria-nico.fly.dev/api/briefings/email-test"` — sends a test email to verify SMTP.
+4. **Schedule:** Morning 7am Pacific, evening 8pm Pacific, Mon–Fri. Server uses `TZ=America/Los_Angeles`.
+5. **Logs:** `flyctl logs` — look for `[cron] Morning/Evening briefing triggered` and `sent by email` or `email not configured`.
+
+## Cron Jobs (run in-process, Pacific time)
 
 - Prices/signals: every 5 min
 - News: every 15 min
 - OHLCV refresh: daily 06:00
-- Scanner: daily 07:00
-- Morning briefing: weekdays 08:00
-- Evening briefing: weekdays 18:00
+- Scanner: daily 06:30
+- Morning briefing: weekdays 07:00 (emails if SMTP configured)
+- Evening briefing: weekdays 20:00 / 8pm (emails if SMTP configured)
 - DB backup: 1st and 15th at 03:00
+
+Debug: `curl -s https://aria-nico.fly.dev/api/briefings/status` — last run, email config, server time in Pacific.
 
 ## Free Tier
 

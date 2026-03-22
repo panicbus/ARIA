@@ -4,6 +4,7 @@
  */
 
 import { Router, Request, Response } from "express";
+import { displayTicker } from "../utils/watchlist";
 
 type RiskContext = {
   suggested_position_size_pct: number;
@@ -52,10 +53,12 @@ export function createSignalsRouter(ctx: DbContext): Router {
           ind = JSON.parse(s.indicator_data);
         } catch (_) {}
       }
+      const ticker = displayTicker(s.ticker);
       return {
         ...s,
+        ticker,
         indicator_data: ind,
-        risk_context: getRiskContextForTicker(s.ticker, s.signal, ind),
+        risk_context: getRiskContextForTicker(ticker, s.signal, ind),
       };
     });
     res.json(signals);

@@ -27,7 +27,7 @@
 | `GEMINI_API_KEY` | Yes | Gemini 2.0 Flash for chat, briefings, memory (free tier) |
 | `ALPHAVANTAGE_API_KEY` | No | OHLCV historical data |
 | `FINNHUB_API_KEY` | No | Stock prices |
-| `TAVILY_API_KEY` | No | Web search in chat |
+| `TAVILY_API_KEY` | No | **Web search in chat** — if missing, ARIA will say "web search encountering an issue" when asked about recent news. Set via `flyctl secrets set TAVILY_API_KEY=tvly-...` |
 | `ROBINHOOD_API_KEY` | No | Crypto portfolio |
 | `ROBINHOOD_PRIVATE_KEY` | No | Robinhood API signing |
 | `BRIEFING_EMAIL_TO` | No | Evening briefing recipient |
@@ -57,19 +57,23 @@ curl -X POST https://aria-nico.fly.dev/api/briefings/generate-evening
 
 Response includes `email_sent: true` or `false` — confirms SMTP is working.
 
-## Cron Jobs (in-process)
+## Cron Jobs (in-process, Pacific time)
 
 - Prices/signals: every 5 min
 - News: every 15 min
 - OHLCV: daily 06:00
-- Scanner: daily 07:00
-- Morning briefing: weekdays 08:00
-- Evening briefing: weekdays 18:00 (emails if SMTP configured)
+- Scanner: daily 06:30 (before 7am briefing)
+- Morning briefing: weekdays **7:00** (emails if SMTP configured)
+- Evening briefing: weekdays **20:00 (8pm)** (emails if SMTP configured)
 - DB backup: 1st and 15th at 03:00
+
+Debug: `curl -s https://aria-nico.fly.dev/api/briefings/status` — shows last run, email config, server time.
 
 ## Health Check
 
 `GET /health` → `{"status":"healthy","timestamp":"..."}` — used by Fly for liveness.
+
+`GET /api/web-search-status` → Diagnoses web search (TAVILY_API_KEY configured, API reachable). Use when ARIA says "web search encountering an issue".
 
 ## Files
 

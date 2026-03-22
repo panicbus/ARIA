@@ -2,6 +2,9 @@
 # Node.js 20 Alpine for minimal image size
 FROM node:20-alpine
 
+# tzdata for reliable cron timezone (7am/8pm Pacific)
+RUN apk add --no-cache tzdata
+
 WORKDIR /app
 
 # Copy package files
@@ -26,7 +29,9 @@ RUN mkdir -p /data
 EXPOSE 8080
 
 # Run compiled server; DATA_DIR=/data for persistent volume
+# TZ required for node-cron: briefings at 7am/8pm Pacific
 ENV DATA_DIR=/data
 ENV NODE_ENV=production
+ENV TZ=America/Los_Angeles
 
 CMD ["node", "dist-server/server/index.js"]

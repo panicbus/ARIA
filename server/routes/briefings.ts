@@ -27,6 +27,45 @@ export function createBriefingsRouter(ctx: DbContext): Router {
     res.json(briefings);
   });
 
+  // GET /api/briefings/status — debug: cron schedule, last runs, email config, server time
+  router.get("/status", (req: Request, res: Response) => {
+    const TZ = "America/Los_Angeles";
+    const now = new Date();
+    const nowPacific = now.toLocaleString("en-US", { timeZone: TZ });
+    const hour24 = now.toLocaleString("en-US", { timeZone: TZ, hour: "2-digit", hour12: false });
+    const weekday = now.toLocaleString("en-US", { timeZone: TZ, weekday: "short" });
+
+    const lastMorning = execAll<{ created_at: string }>("SELECT created_at FROM briefings WHERE type = 'morning' ORDER BY id DESC LIMIT 1");
+    const lastEvening = execAll<{ created_at: string }>("SELECT created_at FROM briefings WHERE type = 'evening' ORDER BY id DESC LIMIT 1");
+
+    const to = !!process.env.BRIEFING_EMAIL_TO?.trim();
+    const smtpOk = !!process.env.SMTP_HOST?.trim() && !!process.env.SMTP_USER?.trim() && !!process.env.SMTP_PASS?.trim();
+    const emailConfigured = to && smtpOk;
+
+    res.json({
+      schedule: {
+        morning: "7:00 Pacific, Mon–Fri",
+        evening: "20:00 (8pm) Pacific, Mon–Fri",
+      },
+      serverTime: {
+        utc: now.toISOString(),
+        pacific: nowPacific,
+        pacificHour: hour24,
+        weekday,
+      },
+      lastMorning: lastMorning[0]?.created_at ?? null,
+      lastEvening: lastEvening[0]?.created_at ?? null,
+      email: {
+        configured: emailConfigured,
+        to: to ? "set" : "missing BRIEFING_EMAIL_TO",
+        smtp: smtpOk ? "ok" : "missing SMTP_HOST/USER/PASS",
+      },
+      hint: !emailConfigured
+        ? "Briefings generate but won't email. Set BRIEFING_EMAIL_TO + SMTP_* via flyctl secrets."
+        : undefined,
+    });
+  });
+
   // GET /api/briefings/email-test — send a test email to verify SMTP config
   router.get("/email-test", async (req: Request, res: Response) => {
     const to = process.env.BRIEFING_EMAIL_TO?.trim();
@@ -93,7 +132,8 @@ export function createBriefingsRouter(ctx: DbContext): Router {
       if (!briefing) {
         return res.status(500).json({ error: "Failed to generate evening briefing" });
       }
-      res.json(briefing);
+      const sent = await sendBriefingEmail(briefing.content, `ARIA Evening Briefing — ${new Date().toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}`);
+      res.json({ ...briefing, email_sent: sent });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Evening briefing error:", message);

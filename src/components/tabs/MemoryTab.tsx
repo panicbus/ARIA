@@ -22,6 +22,30 @@ function parseMemoryValue(value: string): unknown {
   }
 }
 
+/** Parse watchlist value — handles malformed JSON like ["IGPT"] stored as string, returns clean ticker strings for display */
+function parseWatchlistForDisplay(value: string): string[] {
+  const parsed = parseMemoryValue(value);
+  if (Array.isArray(parsed)) {
+    return parsed
+      .map((item) => {
+        if (typeof item === "string") {
+          const t = item.replace(/[\[\]"]/g, "").toUpperCase().trim();
+          return t.length >= 1 && t.length <= 6 ? t : null;
+        }
+        if (Array.isArray(item) && item.length > 0) return String(item[0]).replace(/[\[\]"]/g, "").toUpperCase().trim();
+        return null;
+      })
+      .filter((t): t is string => t != null && t.length > 0);
+  }
+  if (typeof parsed === "string") {
+    return parsed
+      .split(/[\s,]+/)
+      .map((s) => s.replace(/[\[\]"]/g, "").toUpperCase().trim())
+      .filter((s) => s.length >= 1 && s.length <= 6);
+  }
+  return [];
+}
+
 type PositionParsed = {
   ticker?: string;
   amount?: number;
@@ -311,8 +335,8 @@ export function MemoryTab({
               <>
                 <div style={{ fontSize: 10, letterSpacing: "0.1em", color: "#666", fontFamily: "var(--mono)", marginTop: 12, marginBottom: 4 }}>WATCHLIST</div>
                 {portfolioMemories.filter((m) => m.key === "watchlist_core").map((m) => {
-                  const arr = parseMemoryValue(m.value);
-                  const disp = Array.isArray(arr) ? arr.join(", ") : String(m.value);
+                  const tickers = parseWatchlistForDisplay(m.value);
+                  const disp = tickers.length > 0 ? tickers.join(", ") : String(m.value).replace(/[\[\]"]/g, "");
                   return (
                     <div key={m.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.07)" }}>
                       <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "#ccc" }}>• Core: {disp}</span>
@@ -324,8 +348,8 @@ export function MemoryTab({
                   );
                 })}
                 {portfolioMemories.filter((m) => m.key === "watchlist_speculative").map((m) => {
-                  const arr = parseMemoryValue(m.value);
-                  const disp = Array.isArray(arr) ? arr.join(", ") : String(m.value);
+                  const tickers = parseWatchlistForDisplay(m.value);
+                  const disp = tickers.length > 0 ? tickers.join(", ") : String(m.value).replace(/[\[\]"]/g, "");
                   return (
                     <div key={m.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.07)" }}>
                       <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "#ccc" }}>• Speculative: {disp}</span>
@@ -336,15 +360,18 @@ export function MemoryTab({
                     </div>
                   );
                 })}
-                {portfolioMemories.filter((m) => m.key === "watchlist").map((m) => (
+                {portfolioMemories.filter((m) => m.key === "watchlist").map((m) => {
+                  const tickers = parseWatchlistForDisplay(m.value);
+                  const disp = tickers.length > 0 ? tickers.join(", ") : String(m.value).replace(/[\[\]"]/g, "");
+                  return (
                   <div key={m.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.07)" }}>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "#ccc" }}>• {String(m.value)}</span>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "#ccc" }}>• {disp}</span>
                     <div style={{ display: "flex", gap: 6 }}>
                       {btn("Edit", () => { setEditingKey(m.key); setEditValue(m.value); })}
                       {btn("×", () => onDelete(m.key))}
                     </div>
                   </div>
-                ))}
+                );})}
               </>
             )}
             {addingPosition ? (

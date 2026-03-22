@@ -5,6 +5,7 @@
  */
 
 import { Router, Request, Response } from "express";
+import { parseWatchlistValue } from "../utils/watchlist";
 
 type PriceRow = { symbol: string; price: number; change_24h: number | null; source: string; updated_at: string };
 type NewsRow = { id: number; title: string; url: string | null; source: string; created_at: string; summary?: string | null };
@@ -46,32 +47,11 @@ function buildMarketPulseTickers(execAll: DbContext["execAll"]): MarketPulseEntr
     } catch (_) {}
   }
 
-  // Watchlist: core first, then speculative, up to 5 total
-  const coreRow = execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist_core' LIMIT 1");
-  const specRow = execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist_speculative' LIMIT 1");
-  let core: string[] = [];
-  let spec: string[] = [];
-  if (coreRow[0]?.value) {
-    try {
-      const parsed = JSON.parse(coreRow[0].value);
-      if (Array.isArray(parsed)) core = parsed.map((x: unknown) => String(x).toUpperCase()).filter(Boolean);
-    } catch (_) {}
-  }
-  if (specRow[0]?.value) {
-    try {
-      const parsed = JSON.parse(specRow[0].value);
-      if (Array.isArray(parsed)) spec = parsed.map((x: unknown) => String(x).toUpperCase()).filter(Boolean);
-    } catch (_) {}
-  }
-  const watchlistAll = [...core, ...spec.filter((t) => !core.includes(t))];
-  // Fallback: legacy watchlist (comma-separated)
-  const watchRow = execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist' LIMIT 1");
-  if (watchRow[0]?.value?.trim()) {
-    const fromWatch = watchRow[0].value.split(/[\s,]+/).map((s) => s.toUpperCase()).filter(Boolean);
-    for (const t of fromWatch) {
-      if (!watchlistAll.includes(t)) watchlistAll.push(t);
-    }
-  }
+  // Watchlist: core first, then speculative — use parseWatchlistValue for robust parsing (handles ["IGPT"] etc.)
+  const core = parseWatchlistValue(execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist_core' LIMIT 1")[0]?.value);
+  const spec = parseWatchlistValue(execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist_speculative' LIMIT 1")[0]?.value);
+  const legacy = parseWatchlistValue(execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'watchlist' LIMIT 1")[0]?.value);
+  const watchlistAll = [...core, ...spec.filter((t) => !core.includes(t)), ...legacy.filter((t) => !core.includes(t) && !spec.includes(t))];
   for (const t of watchlistAll) {
     if (result.filter((e) => e.category === "watchlist").length >= 5) break;
     if (!seen.has(t)) {
