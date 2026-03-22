@@ -153,8 +153,25 @@ export type RobinhoodSummary = {
   last_updated: string;
 };
 
-const CRYPTO_SYMBOLS = ["BTC", "ETH"];
-const ROBINHOOD_SYMBOL_MAP: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD" };
+// Include all Robinhood holdings — don't filter to a fixed list. Robinhood may add cryptos (e.g. DOGE, SOL).
+const ROBINHOOD_SYMBOL_MAP: Record<string, string> = {
+  BTC: "BTC-USD",
+  ETH: "ETH-USD",
+  DOGE: "DOGE-USD",
+  LTC: "LTC-USD",
+  SOL: "SOL-USD",
+  AVAX: "AVAX-USD",
+  SHIB: "SHIB-USD",
+  LINK: "LINK-USD",
+  UNI: "UNI-USD",
+  MATIC: "MATIC-USD",
+  ATOM: "ATOM-USD",
+  XLM: "XLM-USD",
+  BCH: "BCH-USD",
+  ETC: "ETC-USD",
+  ADA: "ADA-USD",
+  DOT: "DOT-USD",
+};
 
 function rhFetch<T>(path: string, options: { method?: string; body?: string } = {}): Promise<T | null> {
   if (!isConfigured()) return Promise.resolve(null);
@@ -218,8 +235,8 @@ export async function fetchCryptoHoldings(): Promise<RobinhoodHolding[] | null> 
   const holdings: RobinhoodHolding[] = [];
   for (const r of data.results) {
     const symbolRaw = (r.asset_code ?? r.symbol ?? r.currency ?? (r as any).currency?.code ?? "") as string;
-    const symbol = String(symbolRaw).replace(/-USD$/, "").toUpperCase();
-    if (!CRYPTO_SYMBOLS.includes(symbol)) continue;
+    const symbol = String(symbolRaw).replace(/-USD$/i, "").toUpperCase().trim();
+    if (!symbol || symbol.length > 10) continue;
 
     const quantity = Number(r.total_quantity ?? r.quantity ?? r.amount ?? r.quantity_available_for_trading ?? r.quantity_available ?? 0) || 0;
     const costBasis = Number(r.cost_basis ?? r.cost_basis_amount ?? r.cost_basis_price ?? 0) || 0;

@@ -15,6 +15,7 @@ export function HoldingsAccordion({
   onToggle,
   ohlcvRefreshAll,
   onRefreshAll,
+  refreshTrigger = 0,
 }: {
   memories: Memory[];
   dashboard: Dashboard | null;
@@ -22,6 +23,7 @@ export function HoldingsAccordion({
   onToggle: () => void;
   ohlcvRefreshAll: boolean;
   onRefreshAll: () => void;
+  refreshTrigger?: number;
 }) {
   const [cryptoPortfolio, setCryptoPortfolio] = useState<CryptoPortfolioHolding[]>([]);
 
@@ -34,7 +36,7 @@ export function HoldingsAccordion({
     load();
     const t = setInterval(load, DASHBOARD_POLL_MS);
     return () => clearInterval(t);
-  }, []);
+  }, [refreshTrigger]);
 
   // Only show valid position_TICKER keys (reject position_AVERAGE_COST_X, position_QUANTITY_X, etc.)
   const isValidPositionKey = (key: string) => {

@@ -272,6 +272,7 @@ export default function App() {
               open={holdingsOpen}
               onToggle={() => setHoldingsOpen((o) => !o)}
               ohlcvRefreshAll={ohlcvRefreshAll}
+              refreshTrigger={sidebarRefreshTrigger}
               onRefreshAll={async () => {
                 if (ohlcvRefreshAll) return;
                 setOhlcvRefreshAll(true);
@@ -328,6 +329,7 @@ export default function App() {
                   setBacktestPreselectedTicker(t);
                   setActiveTab("backtest");
                 }}
+                onPortfolioRefresh={() => setSidebarRefreshTrigger((t) => t + 1)}
               />
             ) : activeTab === "signals" ? (
               <SignalsTab signals={signals} formatTs={formatTs} />

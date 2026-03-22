@@ -31,9 +31,11 @@ const ASSET_NAMES: Record<string, string> = { BTC: "Bitcoin", ETH: "Ethereum" };
 export function PortfolioTab({
   dashboard,
   onViewBacktest,
+  onPortfolioRefresh,
 }: {
   dashboard: Dashboard | null;
   onViewBacktest?: (ticker: string) => void;
+  onPortfolioRefresh?: () => void;
 }) {
   const [summary, setSummary] = useState<{
     total_crypto_value: number;
@@ -101,7 +103,10 @@ export function PortfolioTab({
     try {
       const res = await fetch(`${API}/portfolio/refresh`, { method: "POST" });
       const data = await res.json();
-      if (res.ok) setSummary(data);
+      if (res.ok) {
+        setSummary(data);
+        onPortfolioRefresh?.();
+      }
     } catch (_) {}
     setRefreshing(false);
   };
