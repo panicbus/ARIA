@@ -59,8 +59,11 @@ a{color:#0066cc}
 ${htmlBody}
 </body>
 </html>`;
+    const from =
+      process.env.SMTP_FROM?.trim() ||
+      `ARIA <${user}>`; // display name + mailbox; Gmail still sends as authenticated SMTP_USER
     await transporter.sendMail({
-      from: process.env.SMTP_FROM?.trim() || user,
+      from,
       to,
       subject,
       text: content,
