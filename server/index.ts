@@ -47,8 +47,42 @@ app.get("/health", (_req, res) => {
 // ── Database (sql.js: no native build, runs everywhere) ────────────────────────
 const DB_PATH = path.join(DATA_DIR, "aria.db");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
-const BACKUP_RETAIN = 6; // Keep last 6 backups (~3 months at 14-day interval)
+const BACKUP_RETAIN = 6; // Keep last 6 backups (~18 days at 3-day cadence)
+/** sql.js keeps the full DB in WASM memory; file size is a rough lower bound for steady-state RAM. Tunable via env (MB). */
+const SQLJS_DB_WARN_MB = Number(process.env.SQLJS_DB_WARN_MB) || 48;
+const SQLJS_DB_CRITICAL_MB = Number(process.env.SQLJS_DB_CRITICAL_MB) || 96;
+const DB_SIZE_CHECK_INTERVAL_MS = Number(process.env.DB_SIZE_CHECK_INTERVAL_MS) || 6 * 60 * 60 * 1000;
+const BYTES_PER_MB = 1024 * 1024;
+/** Synced to memories for chat context; hidden from Memory tab API (aria_system% prefix). */
+const ARIA_SYSTEM_DB_SIZE_KEY = "aria_system_db_size";
 let db: import("sql.js").Database;
+
+/** Logs when aria.db on disk is large enough that sql.js + export/save spikes risk OOM on a small VM (e.g. 512MB). */
+function checkAriaDbSize(): void {
+  try {
+    if (!fs.existsSync(DB_PATH)) {
+      syncAriaDbSizeChatAlert(0, "ok");
+      return;
+    }
+    const bytes = fs.statSync(DB_PATH).size;
+    const mb = bytes / BYTES_PER_MB;
+    let level: "ok" | "warn" | "critical" = "ok";
+    if (mb >= SQLJS_DB_CRITICAL_MB) {
+      level = "critical";
+      console.warn(
+        `[aria.db] CRITICAL: on-disk ${mb.toFixed(1)} MB (threshold ${SQLJS_DB_CRITICAL_MB} MB). sql.js loads the whole file into memory; export/save duplicates work — high OOM risk. Prune OHLCV/messages/history, add RAM, or migrate off sql.js. (${DB_PATH})`
+      );
+    } else if (mb >= SQLJS_DB_WARN_MB) {
+      level = "warn";
+      console.warn(
+        `[aria.db] WARN: on-disk ${mb.toFixed(1)} MB (threshold ${SQLJS_DB_WARN_MB} MB). Memory pressure likely; plan pruning or more RAM before next big job. (${DB_PATH})`
+      );
+    }
+    syncAriaDbSizeChatAlert(mb, level);
+  } catch (e) {
+    console.error("[aria.db] size check failed:", e);
+  }
+}
 
 function saveDb() {
   const data = db.export();
@@ -88,6 +122,35 @@ function run(sql: string, params?: DbParams): { lastInsertRowid: number } {
   return { lastInsertRowid: id };
 }
 
+/** Writes/removes a synthetic memory so chat MEMORY block surfaces DB size risk to the model; cleared when size is OK. */
+function syncAriaDbSizeChatAlert(mb: number, level: "ok" | "warn" | "critical"): void {
+  try {
+    if (!db) return;
+    if (level === "ok") {
+      const rows = execAll<{ key: string }>(
+        `SELECT key FROM memories WHERE key = '${ARIA_SYSTEM_DB_SIZE_KEY.replace(/'/g, "''")}' LIMIT 1`
+      );
+      if (!rows.length) return;
+      db.run("DELETE FROM memories WHERE key = :k", { ":k": ARIA_SYSTEM_DB_SIZE_KEY });
+      saveDb();
+      return;
+    }
+    const now = new Date().toISOString();
+    const value =
+      level === "critical"
+        ? `[AUTO — tell Nico if they open chat] aria.db is ${mb.toFixed(1)} MB on disk (CRITICAL vs ${SQLJS_DB_CRITICAL_MB} MB). sql.js loads the entire DB into RAM; export/save doubles memory briefly — OOM risk on the Fly VM. Suggest pruning old OHLCV/messages or increasing memory.`
+        : `[AUTO — tell Nico if they open chat] aria.db is ${mb.toFixed(1)} MB on disk (warn threshold ${SQLJS_DB_WARN_MB} MB). sql.js holds the full DB in memory; plan pruning or more RAM before the next heavy job.`;
+    db.run(
+      `INSERT INTO memories (key, value, confidence, source, updated_at, created_at) VALUES (:key, :value, 1, 'system', :u, :u)
+       ON CONFLICT(key) DO UPDATE SET value = :value, confidence = 1, source = 'system', updated_at = :u`,
+      { ":key": ARIA_SYSTEM_DB_SIZE_KEY, ":value": value, ":u": now }
+    );
+    saveDb();
+  } catch (e) {
+    console.error("[aria.db] chat alert sync failed:", e);
+  }
+}
+
 const SYSTEM_PROMPT = `You are ARIA — Autonomous Research & Intelligence Assistant — a personal intelligence layer built for Nico, a senior frontend developer in the Bay Area with 12 years of tech experience.
 
 Your three core domains:
@@ -105,7 +168,9 @@ SIGNAL: [BUY | SELL | HOLD | WATCH]
 REASONING: [1-2 sentences max]
 ACTION: [specific next step if applicable]
 
-When Nico says he owns, bought, or holds shares (e.g. "I have 23 RDDT at $45", "update my AMD position: 100 shares, avg $120"), use add_position with ticker, quantity, and average_cost. Do NOT use remember for positions.`;
+When Nico says he owns, bought, or holds shares (e.g. "I have 23 RDDT at $45", "update my AMD position: 100 shares, avg $120"), use add_position with ticker, quantity, and average_cost. Do NOT use remember for positions.
+
+If MEMORY includes key aria_system_db_size, it is an automatic capacity warning (SQLite/sql.js on Fly). When Nico chats, briefly mention it and what it means (OOM risk, pruning, or more RAM) if the message is still current.`;
 
 // ── Live data (prices, news, signals) ──────────────────────────────────────────
 // Base tickers always fetched. Memory watchlist (Portfolio tab) adds more — no code change needed.
@@ -535,6 +600,9 @@ async function start() {
     app.use(express.static(distPath));
     app.get("*", (_req, res) => res.sendFile(path.join(distPath, "index.html")));
   }
+
+  checkAriaDbSize();
+  setInterval(checkAriaDbSize, DB_SIZE_CHECK_INTERVAL_MS);
 
   app.listen(PORT, () => {
     console.log(`

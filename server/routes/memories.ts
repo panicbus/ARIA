@@ -30,16 +30,19 @@ export function createMemoriesRouter(ctx: DbContext): Router {
   // WHAT: GET returns all memories; POST create/update; DELETE one by key or clear all; GET /export for JSON.
   // WHY: Lets Nico view, add, edit memories from the Memory tab; supports transparency and manual overrides.
 
+  /** System keys (e.g. db size alert for chat) — surfaced in model context, not in Memory tab. */
+  const SYSTEM_KEY_GLOB = "aria_system_*";
+
   router.get("/", (req: Request, res: Response) => {
     const memories = execAll<MemoryRow>(
-      "SELECT id, key, value, confidence, source, updated_at, created_at FROM memories ORDER BY updated_at DESC"
+      `SELECT id, key, value, confidence, source, updated_at, created_at FROM memories WHERE NOT (key GLOB '${SYSTEM_KEY_GLOB.replace(/'/g, "''")}') ORDER BY updated_at DESC`
     );
     res.json(memories);
   });
 
   router.get("/export", (req: Request, res: Response) => {
     const memories = execAll<MemoryRow>(
-      "SELECT key, value, confidence, source, updated_at FROM memories ORDER BY key"
+      `SELECT key, value, confidence, source, updated_at FROM memories WHERE NOT (key GLOB '${SYSTEM_KEY_GLOB.replace(/'/g, "''")}') ORDER BY key`
     );
     const exportObj: Record<string, unknown> = {};
     for (const m of memories) {
