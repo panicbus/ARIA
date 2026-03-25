@@ -25,6 +25,7 @@ import { createChatRouter } from "./routes/chat";
 import { createScannerRouter } from "./routes/scanner";
 import { createPortfolioRouter } from "./routes/portfolio";
 import { fetchCryptoPortfolioSummary, logRobinhoodStatus } from "./services/robinhood";
+import { createPruneStorage } from "./services/prune";
 import { parseWatchlistValue } from "./utils/watchlist";
 
 const app = express();
@@ -504,6 +505,8 @@ async function start() {
     cryptoIds: CRYPTO_COINGECKO_IDS,
   });
 
+  const pruneStorage = createPruneStorage({ execAll, run, saveDb });
+
   app.use("/api", createHealthRouter({ dataDir: DATA_DIR, dbPath: DB_PATH, execAll }));
   app.use("/api", createDashboardRouter({ execAll, getWatchedTickers, getRiskContextForTicker }));
   app.use("/api/signals", createSignalsRouter({ execAll, run, saveDb, getRiskContextForTicker, generateSignals }));
@@ -634,6 +637,15 @@ async function start() {
   // DB backup — 3am Pacific every 3 days (days 1, 4, 7, 10, …)
   cron.schedule("0 3 */3 * *", () => {
     backupDb();
+  }, { timezone: TZ });
+
+  // Prune old OHLCV + chat history — 04:00 Pacific daily (before OHLCV refresh). Caps DB size for sql.js.
+  cron.schedule("0 4 * * *", () => {
+    try {
+      pruneStorage();
+    } catch (err) {
+      console.error("[cron] Prune failed:", err);
+    }
   }, { timezone: TZ });
 
   // OHLCV refresh — daily at 05:30 Pacific (staggered to avoid memory spike with scanner/briefing)
