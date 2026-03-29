@@ -142,7 +142,7 @@ export function PortfolioTab({
   const HeaderRow = () => (
     <div ref={infoRef} style={{ position: "relative" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
-        <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)" }}>CRYPTO PORTFOLIO</div>
+        <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#999", fontWeight: 600, fontFamily: "var(--mono)" }}>CRYPTO PORTFOLIO</div>
         <button
           onClick={() => setInfoOpen((o) => !o)}
           style={{
@@ -152,7 +152,7 @@ export function PortfolioTab({
             borderRadius: "50%",
             border: "1px solid rgba(255,255,255,0.2)",
             background: infoOpen ? "rgba(0,255,148,0.15)" : "rgba(255,255,255,0.04)",
-            color: infoOpen ? "#00ff94" : "#666",
+            color: infoOpen ? "#00ff94" : "#888",
             fontSize: 18,
             cursor: "pointer",
             display: "flex",
@@ -179,7 +179,7 @@ export function PortfolioTab({
           }}
         >
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
-            <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
+            <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#888", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
           </div>
           {glossaryTooltip}
         </div>
@@ -198,7 +198,7 @@ export function PortfolioTab({
           style={{
             padding: 32,
             textAlign: "center",
-            color: "#555",
+            color: "#777",
             fontSize: 15,
             fontFamily: "var(--body)",
             background: "rgba(255,255,255,0.02)",
@@ -341,7 +341,7 @@ export function PortfolioTab({
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
                 <div>
                   <span style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 18, color: "#f0f0f0" }}>{h.symbol}</span>
-                  <span style={{ fontSize: 14, color: "#666", marginLeft: 8 }}>{ASSET_NAMES[h.symbol] ?? h.symbol}</span>
+                  <span style={{ fontSize: 14, color: "#888", marginLeft: 8 }}>{ASSET_NAMES[h.symbol] ?? h.symbol}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   {signal?.indicator_data?.rsi != null && (
@@ -375,11 +375,11 @@ export function PortfolioTab({
                 )}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12, marginBottom: 12, fontSize: 12, fontFamily: "var(--mono)" }}>
-                <div><span style={{ color: "#666" }}>Quantity:</span> {h.quantity.toFixed(4)}</div>
-                <div><span style={{ color: "#666" }}>Avg buy:</span> ${h.average_buy_price.toFixed(2)}</div>
-                <div><span style={{ color: "#666" }}>Market value:</span> ${h.market_value.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                <div><span style={{ color: "#888" }}>Quantity:</span> {h.quantity.toFixed(4)}</div>
+                <div><span style={{ color: "#888" }}>Avg buy:</span> ${h.average_buy_price.toFixed(2)}</div>
+                <div><span style={{ color: "#888" }}>Market value:</span> ${h.market_value.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
                 <div>
-                  <span style={{ color: "#666" }}>Unrealized P&L:</span>{" "}
+                  <span style={{ color: "#888" }}>Unrealized P&L:</span>{" "}
                   <span style={{ color: h.unrealized_pnl >= 0 ? "#00ff94" : "#ff4757" }}>
                     ${h.unrealized_pnl.toFixed(2)} ({h.unrealized_pnl >= 0 ? "+" : ""}{h.unrealized_pnl_pct.toFixed(1)}%)
                   </span>
@@ -411,7 +411,7 @@ export function PortfolioTab({
         <div style={{ marginTop: 8, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "#00ff94", fontFamily: "var(--mono)", marginBottom: 8 }}>ARIA&apos;S TAKE</div>
           {ariaTakeLoading ? (
-            <div style={{ color: "#666", fontSize: 13 }}>Loading…</div>
+            <div style={{ color: "#888", fontSize: 13 }}>Loading…</div>
           ) : ariaTake ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {ariaTake.btc ? <div style={{ fontSize: 14, lineHeight: 1.6, color: "#ccc" }}>{ariaTake.btc}</div> : null}
@@ -433,7 +433,7 @@ export function PortfolioTab({
               </button>
             </div>
           ) : (
-            <div style={{ color: "#666", fontSize: 13 }}>Unable to load ARIA&apos;s take.</div>
+            <div style={{ color: "#888", fontSize: 13 }}>Unable to load ARIA&apos;s take.</div>
           )}
         </div>
       )}

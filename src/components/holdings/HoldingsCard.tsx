@@ -115,7 +115,7 @@ export function HoldingsCard({ memoryKey, pos, currentPrice, apiBase }: Holdings
             borderBottom: tab === "summary" ? "none" : "1px solid rgba(255,255,255,0.07)",
             borderRight: tab === "summary" ? "1px solid rgba(255,255,255,0.07)" : "none",
             background: tab === "summary" ? "transparent" : "rgba(255,255,255,0.04)",
-            color: tab === "summary" ? "#ccc" : "#555",
+            color: tab === "summary" ? "#ccc" : "#777",
           }}
         >
           Summary
@@ -132,7 +132,7 @@ export function HoldingsCard({ memoryKey, pos, currentPrice, apiBase }: Holdings
             borderBottom: tab === "chart" ? "none" : "1px solid rgba(255,255,255,0.07)",
             borderLeft: tab === "chart" ? "1px solid rgba(255,255,255,0.07)" : "none",
             background: tab === "chart" ? "transparent" : "rgba(255,255,255,0.04)",
-            color: tab === "chart" ? "#ccc" : "#555",
+            color: tab === "chart" ? "#ccc" : "#777",
           }}
         >
           Chart
@@ -190,7 +190,7 @@ export function HoldingsCard({ memoryKey, pos, currentPrice, apiBase }: Holdings
               <div
                 style={{
                   fontSize: 9,
-                  color: "#555",
+                  color: "#777",
                   marginTop: 4,
                   fontFamily: "var(--mono)",
                 }}
@@ -204,14 +204,14 @@ export function HoldingsCard({ memoryKey, pos, currentPrice, apiBase }: Holdings
             <span
               style={{
                 fontSize: 9,
-                color: "#666",
+                color: "#888",
                 fontFamily: "var(--mono)",
                 letterSpacing: "0.08em",
               }}
             >
               {ticker}
             </span>
-            <span style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)" }}>
+            <span style={{ fontSize: 10, color: "#777", fontFamily: "var(--mono)" }}>
               Loading…
             </span>
           </div>
@@ -221,7 +221,7 @@ export function HoldingsCard({ memoryKey, pos, currentPrice, apiBase }: Holdings
               <span
                 style={{
                   fontSize: 9,
-                  color: "#666",
+                  color: "#888",
                   fontFamily: "var(--mono)",
                   letterSpacing: "0.08em",
                 }}
@@ -284,7 +284,7 @@ export function HoldingsCard({ memoryKey, pos, currentPrice, apiBase }: Holdings
               <span
                 style={{
                   fontSize: 9,
-                  color: "#666",
+                  color: "#888",
                   fontFamily: "var(--mono)",
                   letterSpacing: "0.08em",
                 }}
@@ -297,12 +297,12 @@ export function HoldingsCard({ memoryKey, pos, currentPrice, apiBase }: Holdings
                 <LineChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
                   <XAxis
                     dataKey="date"
-                    tick={{ fontSize: 8, fill: "#555" }}
+                    tick={{ fontSize: 8, fill: "#777" }}
                     stroke="#333"
                     interval="preserveStartEnd"
                   />
                   <YAxis
-                    tick={{ fontSize: 8, fill: "#555" }}
+                    tick={{ fontSize: 8, fill: "#777" }}
                     stroke="#333"
                     tickFormatter={(v) => `$${v}`}
                     domain={["auto", "auto"]}
@@ -333,7 +333,7 @@ export function HoldingsCard({ memoryKey, pos, currentPrice, apiBase }: Holdings
             <span
               style={{
                 fontSize: 9,
-                color: "#666",
+                color: "#888",
                 fontFamily: "var(--mono)",
                 letterSpacing: "0.08em",
                 flexShrink: 0,
@@ -350,7 +350,7 @@ export function HoldingsCard({ memoryKey, pos, currentPrice, apiBase }: Holdings
                 gap: 8,
               }}
             >
-              <span style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)" }}>
+              <span style={{ fontSize: 10, color: "#777", fontFamily: "var(--mono)" }}>
                 No 30-day data. Try refresh (takes ~15s).
               </span>
               <button

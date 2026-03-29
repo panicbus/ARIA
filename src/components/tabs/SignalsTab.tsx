@@ -72,7 +72,7 @@ export function SignalsTab({
     <div className="tab-signals" style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
       <div ref={infoRef} style={{ position: "relative" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
-          <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)" }}>LIVE SIGNALS</div>
+          <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#999", fontWeight: 600, fontFamily: "var(--mono)" }}>LIVE SIGNALS</div>
           <button
             onClick={() => setInfoOpen((o) => !o)}
             style={{
@@ -82,7 +82,7 @@ export function SignalsTab({
               borderRadius: "50%",
               border: "1px solid rgba(255,255,255,0.2)",
               background: "rgba(255,255,255,0.04)",
-              color: "#666",
+              color: "#888",
               fontSize: 18,
               cursor: "pointer",
               display: "flex",
@@ -109,14 +109,14 @@ export function SignalsTab({
             }}
           >
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
-              <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
+              <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#888", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
             </div>
             {signalsExplainer}
           </div>
         )}
       </div>
       {signals.length === 0 ? (
-        <div style={{ color: "#555", fontSize: 13, fontFamily: "var(--mono)" }}>No signals yet. Prices refresh every 5m; signals use technical composite (RSI/MACD/MAs) or 24h fallback.</div>
+        <div style={{ color: "#777", fontSize: 13, fontFamily: "var(--mono)" }}>No signals yet. Prices refresh every 5m; signals use technical composite (RSI/MACD/MAs) or 24h fallback.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {signals.map((s) => {
@@ -154,12 +154,12 @@ export function SignalsTab({
                   />
                 </div>
                 {rc && (
-                  <div style={{ fontSize: 11, color: "#666", fontFamily: "var(--mono)", marginBottom: 4 }}>
+                  <div style={{ fontSize: 11, color: "#888", fontFamily: "var(--mono)", marginBottom: 4 }}>
                     Risk: {rc.suggested_position_size_pct}% size · stop {rc.stop_loss_pct}% · take-profit {rc.take_profit_pct}%
                     {rc.warning && <span style={{ color: "#ffd32a", marginLeft: 8 }}>⚠ {rc.warning}</span>}
                   </div>
                 )}
-                <div style={{ fontSize: 11, color: "#555", fontFamily: "var(--mono)" }}>${Number(s.price).toLocaleString()} · {s.created_at ? formatTs(s.created_at) : ""}</div>
+                <div style={{ fontSize: 11, color: "#777", fontFamily: "var(--mono)" }}>${Number(s.price).toLocaleString()} · {s.created_at ? formatTs(s.created_at) : ""}</div>
               </div>
             );
           })}

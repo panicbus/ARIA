@@ -88,7 +88,7 @@ export function HoldingsAccordion({
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <button onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-          <span style={{ transform: open ? "rotate(90deg)" : "none", display: "inline-block", fontSize: 10, color: "#555", transition: "transform 0.2s ease" }}>▶</span>
+          <span style={{ transform: open ? "rotate(90deg)" : "none", display: "inline-block", fontSize: 10, color: "#777", transition: "transform 0.2s ease" }}>▶</span>
           <span style={{ fontSize: 9, letterSpacing: "0.14em", color: "#444", textTransform: "uppercase", fontFamily: "var(--mono)" }}>Holdings</span>
         </button>
         {open && (positions.length > 0 || hasCrypto) && (

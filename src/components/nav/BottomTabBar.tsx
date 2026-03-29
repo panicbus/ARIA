@@ -50,7 +50,7 @@ export function BottomTabBar({ activeTab, onTabChange, onMoreOpen }: Props) {
               cursor: "pointer",
               gap: 3,
               borderTop: isActive ? "2px solid #00ff94" : "2px solid transparent",
-              color: isActive ? "#00ff94" : "#555",
+              color: isActive ? "#00ff94" : "#777",
               fontSize: 18,
               fontFamily: "var(--mono)",
               background: "none",

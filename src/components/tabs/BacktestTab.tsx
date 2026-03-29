@@ -99,8 +99,8 @@ export function BacktestTab({
       <div ref={infoRef} style={{ position: "relative" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 24 }}>BACKTEST</div>
-            <div style={{ fontSize: 11, color: "#666", fontFamily: "var(--mono)", marginBottom: 8 }}>
+            <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#999", fontWeight: 600, fontFamily: "var(--mono)", marginBottom: 24 }}>BACKTEST</div>
+            <div style={{ fontSize: 11, color: "#888", fontFamily: "var(--mono)", marginBottom: 8 }}>
               Historical simulation — not a guarantee. Uses same composite indicator logic as live signals.
             </div>
           </div>
@@ -113,7 +113,7 @@ export function BacktestTab({
               borderRadius: "50%",
               border: "1px solid rgba(255,255,255,0.2)",
               background: "rgba(255,255,255,0.04)",
-              color: "#666",
+              color: "#888",
               fontSize: 18,
               cursor: "pointer",
               display: "flex",
@@ -140,7 +140,7 @@ export function BacktestTab({
             }}
           >
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
-              <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
+              <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#888", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
             </div>
             {backtestExplainer}
           </div>
@@ -173,7 +173,7 @@ export function BacktestTab({
               { label: "Max Drawdown", value: `-${result.summary.max_drawdown_pct.toFixed(1)}%`, color: "#ff4757" },
             ].map((m) => (
               <div key={m.label} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: 12 }}>
-                <div style={{ fontSize: 9, color: "#555", fontFamily: "var(--mono)", marginBottom: 4 }}>{m.label}</div>
+                <div style={{ fontSize: 9, color: "#777", fontFamily: "var(--mono)", marginBottom: 4 }}>{m.label}</div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: m.color, fontFamily: "var(--display)" }}>{m.value}</div>
               </div>
             ))}
@@ -182,8 +182,8 @@ export function BacktestTab({
             <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: 16, height: 240 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={result.equity_curve}>
-                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#666" }} stroke="#333" tickFormatter={formatMMDDYY} />
-                  <YAxis tick={{ fontSize: 10, fill: "#666" }} stroke="#333" tickFormatter={(v) => `$${v}`} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#888" }} stroke="#333" tickFormatter={formatMMDDYY} />
+                  <YAxis tick={{ fontSize: 10, fill: "#888" }} stroke="#333" tickFormatter={(v) => `$${v}`} />
                   <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 8 }} labelStyle={{ color: "#00ff94" }} labelFormatter={formatMMDDYY} formatter={(v: number) => [`$${v.toFixed(0)}`, "Equity"]} />
                   <Line type="monotone" dataKey="value" stroke="#00ff94" strokeWidth={2} dot={false} />
                 </LineChart>
@@ -192,7 +192,7 @@ export function BacktestTab({
           )}
           {result.trades.length > 0 && (
             <div>
-              <div style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)", marginBottom: 6 }}>TRADES</div>
+              <div style={{ fontSize: 10, color: "#777", fontFamily: "var(--mono)", marginBottom: 6 }}>TRADES</div>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "var(--mono)" }}>
                   <thead>

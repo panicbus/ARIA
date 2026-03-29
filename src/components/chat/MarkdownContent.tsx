@@ -29,7 +29,7 @@ export function MarkdownContent({ content, className = "" }: { content: string; 
   const trimmed = (content ?? "").replace(/^\uFEFF/, "").trim();
   if (!trimmed) {
     return (
-      <span style={{ color: "#666", fontFamily: "var(--mono)", fontSize: 12, fontStyle: "italic" }}>
+      <span style={{ color: "#888", fontFamily: "var(--mono)", fontSize: 12, fontStyle: "italic" }}>
         (no text in this message)
       </span>
     );

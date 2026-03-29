@@ -67,11 +67,11 @@ export function TechNewsTab() {
 
   return (
     <div className="tab-news" style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 4 }}>
+      <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#999", fontWeight: 600, fontFamily: "var(--mono)", marginBottom: 4 }}>
         TECH NEWS
       </div>
       {byDay.size === 0 ? (
-        <div style={{ color: "#555", fontSize: 15, fontFamily: "var(--mono)" }}>
+        <div style={{ color: "#777", fontSize: 15, fontFamily: "var(--mono)" }}>
           No articles in the last 5 days. HN headlines refresh every 30 minutes.
         </div>
       ) : (
@@ -85,7 +85,7 @@ export function TechNewsTab() {
                 style={{
                   fontSize: 12,
                   letterSpacing: "0.1em",
-                  color: "#666",
+                  color: "#888",
                   fontFamily: "var(--mono)",
                   marginBottom: 12,
                   paddingBottom: 6,
@@ -94,7 +94,7 @@ export function TechNewsTab() {
               >
                 {headerLabel}
                 {timeLabel && (
-                  <span style={{ marginLeft: 10, color: "#555" }}>{timeLabel} PT</span>
+                  <span style={{ marginLeft: 10, color: "#777" }}>{timeLabel} PT</span>
                 )}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

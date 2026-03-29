@@ -4,8 +4,15 @@
  * Used by Holdings charts, backtest, and signal generation.
  */
 
+// WAYPOINT [ohlcv-priority-queue]
+// WHAT: Fetches OHLCV in priority order (watched > active scanner > inactive candidates) with a hard 24-call/day Alphavantage limit.
+// WHY: Free-tier AV allows 25/day; we reserve 1 for manual refreshes. Priority ensures Nico's holdings always update first.
+// HOW IT HELPS NICO: Holdings charts stay fresh; scanner universe data builds gradually without blowing the API budget.
+
 const ALPHAVANTAGE_BASE = "https://www.alphavantage.co/query";
 const OHLCV_DAYS = 100;
+const AV_DAILY_LIMIT = 24;
+const AV_CALL_DELAY_MS = 500;
 
 export type OHLCVRow = {
   symbol: string;
@@ -109,17 +116,9 @@ export async function fetchOHLCVForTicker(
       const rows = await fetchOhlcvFromCoinGecko(geckoId, upper);
       return rows.length
         ? { rows, source: "coingecko" }
-        : {
-            rows: [],
-            detail:
-              "No API key and CoinGecko returned no data. Set ALPHAVANTAGE_API_KEY in .env / fly secrets for stocks; check network for crypto.",
-          };
+        : { rows: [], detail: "No API key and CoinGecko returned no data." };
     }
-    return {
-      rows: [],
-      detail:
-        "ALPHAVANTAGE_API_KEY is not set on the server. Add it to .env (local) or run: fly secrets set ALPHAVANTAGE_API_KEY=YOUR_KEY -a <app>",
-    };
+    return { rows: [], detail: "ALPHAVANTAGE_API_KEY is not set on the server." };
   }
 
   let url: string;
@@ -138,11 +137,7 @@ export async function fetchOHLCVForTicker(
       if (isCrypto && geckoId) {
         const rows = await fetchOhlcvFromCoinGecko(geckoId, upper);
         if (rows.length) {
-          return {
-            rows,
-            source: "coingecko",
-            detail: `Alpha Vantage unavailable (${avNote.slice(0, 120)}…). Using CoinGecko history.`,
-          };
+          return { rows, source: "coingecko", detail: `Alpha Vantage unavailable (${avNote.slice(0, 120)}…). Using CoinGecko history.` };
         }
       }
       return { rows: [], raw, detail: avNote };
@@ -179,53 +174,154 @@ export interface OHLCVDbAdapter {
   run: (sql: string, params?: Record<string, string | number | null>) => unknown;
 }
 
-export function createFetchAndStoreOHLCV(deps: {
+function logMem(label: string): void {
+  const used = process.memoryUsage();
+  console.log(`[mem] ${label}: ${Math.round(used.heapUsed / 1024 / 1024)}MB heap, ${Math.round(used.rss / 1024 / 1024)}MB rss`);
+}
+
+function sqlQ(s: string): string {
+  return s.replace(/'/g, "''");
+}
+
+type OHLCVDeps = {
   getWatchedTickers: () => string[];
   db: OHLCVDbAdapter;
   saveDb: () => void;
   cryptoIds?: Record<string, string>;
-}): () => Promise<void> {
-  const { getWatchedTickers, db, saveDb, cryptoIds } = deps;
-  return async function fetchAndStoreOHLCV() {
-    const tickers = getWatchedTickers();
-    for (let i = 0; i < tickers.length; i++) {
-      const symbol = tickers[i];
+  execAll: <T extends Record<string, unknown>>(sql: string) => T[];
+  run: (sql: string, params?: Record<string, string | number | null | undefined>) => { lastInsertRowid: number };
+  onGraduationCheck?: () => void;
+};
+
+function getAvCallsToday(execAll: OHLCVDeps["execAll"]): number {
+  const rows = execAll<{ value: string }>("SELECT value FROM memories WHERE key = 'alphavantage_calls_today' LIMIT 1");
+  if (!rows[0]?.value) return 0;
+  try {
+    const parsed = JSON.parse(rows[0].value) as { date: string; count: number };
+    if (parsed.date === new Date().toISOString().slice(0, 10)) return parsed.count;
+  } catch (_) {}
+  return 0;
+}
+
+function bumpAvCalls(execAll: OHLCVDeps["execAll"], run: OHLCVDeps["run"], saveDb: () => void): void {
+  const today = new Date().toISOString().slice(0, 10);
+  const next = getAvCallsToday(execAll) + 1;
+  run(
+    `INSERT INTO memories (key, value, confidence, source, updated_at, created_at) VALUES ('alphavantage_calls_today', :value, 1, 'system', :u, :u)
+     ON CONFLICT(key) DO UPDATE SET value = :value, updated_at = :u`,
+    { ":value": JSON.stringify({ date: today, count: next }), ":u": new Date().toISOString() }
+  );
+  saveDb();
+}
+
+export function createFetchAndStoreOHLCV(deps: OHLCVDeps): () => Promise<void> {
+  const { getWatchedTickers, db, saveDb, cryptoIds, execAll, run, onGraduationCheck } = deps;
+
+  function storeRows(symbol: string, result: OHLCVFetchResult): void {
+    const rowSource = result.source ?? "alphavantage";
+    for (const r of result.rows) {
+      db.run(
+        `INSERT OR IGNORE INTO ohlcv (symbol, date, open, high, low, close, volume, source, created_at)
+         VALUES (:symbol, :date, :open, :high, :low, :close, :volume, :source, :created_at)`,
+        {
+          ":symbol": r.symbol,
+          ":date": r.date,
+          ":open": r.open,
+          ":high": r.high,
+          ":low": r.low,
+          ":close": r.close,
+          ":volume": r.volume,
+          ":source": rowSource,
+          ":created_at": new Date().toISOString(),
+        }
+      );
+    }
+    if (result.raw) {
+      db.run("UPDATE prices SET source_raw = :raw WHERE symbol = :symbol", {
+        ":raw": (result.raw as string).slice(0, 50000),
+        ":symbol": symbol,
+      });
+    }
+    saveDb();
+  }
+
+  return async function fetchAndStoreOHLCV(): Promise<void> {
+    logMem("ohlcv start");
+    const today = new Date().toISOString().slice(0, 10);
+    let avCalls = getAvCallsToday(execAll);
+
+    // Build priority queue:
+    // P1: watched tickers not updated today
+    const watched = getWatchedTickers();
+    const p1: string[] = [];
+    for (const sym of watched) {
+      const latest = execAll<{ date: string }>(
+        `SELECT date FROM ohlcv WHERE symbol = '${sqlQ(sym)}' ORDER BY date DESC LIMIT 1`
+      );
+      if (!latest[0]?.date || latest[0].date < today) p1.push(sym);
+    }
+
+    // P2: active scanner_universe tickers not already in p1, not updated today
+    const activeScanner = execAll<{ symbol: string }>(
+      "SELECT symbol FROM scanner_universe WHERE active = 1 ORDER BY symbol"
+    );
+    const p1Set = new Set(p1.map((s) => s.toUpperCase()));
+    const p2: string[] = [];
+    for (const row of activeScanner) {
+      const sym = row.symbol.toUpperCase();
+      if (p1Set.has(sym)) continue;
+      const latest = execAll<{ date: string }>(
+        `SELECT date FROM ohlcv WHERE symbol = '${sqlQ(sym)}' ORDER BY date DESC LIMIT 1`
+      );
+      if (!latest[0]?.date || latest[0].date < today) p2.push(sym);
+    }
+
+    // P3: inactive candidates that need data to graduate (sorted A-Z)
+    const allQueued = new Set([...p1Set, ...p2.map((s) => s.toUpperCase())]);
+    const inactive = execAll<{ symbol: string }>(
+      "SELECT symbol FROM scanner_candidates WHERE status = 'pending' ORDER BY symbol"
+    );
+    const p3: string[] = [];
+    for (const row of inactive) {
+      const sym = row.symbol.toUpperCase();
+      if (allQueued.has(sym)) continue;
+      p3.push(sym);
+    }
+
+    const queue = [...p1, ...p2, ...p3];
+    let priorityRefreshed = 0;
+    let inactiveProgressed = 0;
+
+    for (const symbol of queue) {
+      if (avCalls >= AV_DAILY_LIMIT) break;
+      const isCrypto = cryptoIds && symbol.toUpperCase() in cryptoIds;
       const result = await fetchOHLCVForTicker(symbol, { cryptoIds });
       if (!result.rows.length) {
         console.warn(`OHLCV skip ${symbol}:`, result.detail ?? "no data or rate limited");
-        await new Promise((r) => setTimeout(r, 13000));
+        if (!isCrypto) {
+          await new Promise((r) => setTimeout(r, AV_CALL_DELAY_MS));
+        }
         continue;
       }
-      const rowSource = result.source ?? "alphavantage";
-      for (const r of result.rows) {
-        db.run(
-          `INSERT OR IGNORE INTO ohlcv (symbol, date, open, high, low, close, volume, source, created_at)
-           VALUES (:symbol, :date, :open, :high, :low, :close, :volume, :source, :created_at)`,
-          {
-            ":symbol": r.symbol,
-            ":date": r.date,
-            ":open": r.open,
-            ":high": r.high,
-            ":low": r.low,
-            ":close": r.close,
-            ":volume": r.volume,
-            ":source": rowSource,
-            ":created_at": new Date().toISOString(),
-          }
-        );
+      storeRows(symbol, result);
+      const isP3 = p3.includes(symbol);
+      if (isP3) inactiveProgressed++;
+      else priorityRefreshed++;
+
+      if (result.source === "alphavantage") {
+        bumpAvCalls(execAll, run, saveDb);
+        avCalls++;
+        await new Promise((r) => setTimeout(r, AV_CALL_DELAY_MS));
       }
-      if (result.raw) {
-        const latestPrice = result.rows[0];
-        db.run("UPDATE prices SET source_raw = :raw WHERE symbol = :symbol", {
-          ":raw": result.raw.slice(0, 50000),
-          ":symbol": symbol,
-        });
-      }
-      saveDb();
-      console.log(`OHLCV stored ${symbol} (${result.rows.length} bars) [${i + 1}/${tickers.length}]`);
-      if (rowSource === "alphavantage") {
-        await new Promise((r) => setTimeout(r, 13000)); // Free tier: 5 calls/min
-      }
+      console.log(`OHLCV stored ${symbol} (${result.rows.length} bars) [${priorityRefreshed + inactiveProgressed}/${queue.length}]`);
     }
+
+    const remaining = Math.max(0, AV_DAILY_LIMIT - avCalls);
+    console.log(
+      `OHLCV: ${priorityRefreshed} priority tickers refreshed, ${inactiveProgressed} inactive tickers progressed, ${avCalls} calls used today, ${remaining} remaining`
+    );
+
+    onGraduationCheck?.();
+    logMem("ohlcv end");
   };
 }

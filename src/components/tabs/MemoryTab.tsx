@@ -220,7 +220,7 @@ export function MemoryTab({
   return (
     <div className="tab-memory" style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)" }}>MEMORY</div>
+        <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#999", fontWeight: 600, fontFamily: "var(--mono)" }}>MEMORY</div>
         <div ref={infoRef} style={{ display: "flex", alignItems: "center", gap: 10, position: "relative" }}>
           <button
             onClick={() => setInfoOpen((o) => !o)}
@@ -243,7 +243,7 @@ export function MemoryTab({
                 fontSize: 11, fontFamily: "var(--mono)", padding: "5px 12px", borderRadius: 20,
                 border: "1px solid " + (section === s ? "rgba(0,255,148,0.4)" : "rgba(255,255,255,0.15)"),
                 background: section === s ? "rgba(0,255,148,0.1)" : "transparent",
-                color: section === s ? "#00ff94" : "#666", cursor: "pointer",
+                color: section === s ? "#00ff94" : "#888", cursor: "pointer",
               }}
             >
               {s.charAt(0).toUpperCase() + s.slice(1)}
@@ -273,7 +273,7 @@ export function MemoryTab({
               }}
             >
               <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
-                <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
+                <button onClick={() => setInfoOpen(false)} style={{ background: "none", border: "none", color: "#888", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} aria-label="Close">×</button>
               </div>
               <div style={{ marginBottom: 14 }}>
                 <div style={{ fontWeight: 700, color: "#00ff94", marginBottom: 6 }}>Portfolio</div>
@@ -333,7 +333,7 @@ export function MemoryTab({
             })}
             {(portfolioMemories.some((m) => m.key === "watchlist_core") || portfolioMemories.some((m) => m.key === "watchlist_speculative") || portfolioMemories.some((m) => m.key === "watchlist")) && (
               <>
-                <div style={{ fontSize: 10, letterSpacing: "0.1em", color: "#666", fontFamily: "var(--mono)", marginTop: 12, marginBottom: 4 }}>WATCHLIST</div>
+                <div style={{ fontSize: 10, letterSpacing: "0.1em", color: "#888", fontFamily: "var(--mono)", marginTop: 12, marginBottom: 4 }}>WATCHLIST</div>
                 {portfolioMemories.filter((m) => m.key === "watchlist_core").map((m) => {
                   const tickers = parseWatchlistForDisplay(m.value);
                   const disp = tickers.length > 0 ? tickers.join(", ") : String(m.value).replace(/[\[\]"]/g, "");
@@ -444,21 +444,21 @@ export function MemoryTab({
           <div style={{ fontSize: 10, letterSpacing: "0.1em", color: "#00ff94", fontFamily: "var(--mono)", marginBottom: 8 }}>CONTEXT</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {contextMemories.length === 0 ? (
-              <div style={{ color: "#555", fontSize: 12, fontFamily: "var(--mono)" }}>No context memories. Chat with ARIA; she will extract facts over time.</div>
+              <div style={{ color: "#777", fontSize: 12, fontFamily: "var(--mono)" }}>No context memories. Chat with ARIA; she will extract facts over time.</div>
             ) : (
               contextMemories.map((m) => (
                 <div key={m.key} className="memory-card" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "12px 14px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                     <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "#00ff94", fontSize: 12 }}>{m.key}</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      {m.source && <span style={{ fontSize: 10, color: "#666", fontFamily: "var(--mono)", padding: "2px 6px", background: "rgba(255,255,255,0.06)", borderRadius: 4 }}>{m.source}</span>}
-                      {m.confidence != null && <span style={{ fontSize: 10, color: "#666" }}>{(m.confidence * 100).toFixed(0)}%</span>}
+                      {m.source && <span style={{ fontSize: 10, color: "#888", fontFamily: "var(--mono)", padding: "2px 6px", background: "rgba(255,255,255,0.06)", borderRadius: 4 }}>{m.source}</span>}
+                      {m.confidence != null && <span style={{ fontSize: 10, color: "#888" }}>{(m.confidence * 100).toFixed(0)}%</span>}
                       {btn("Edit", () => { setEditingKey(m.key); setEditValue(m.value); })}
                       {btn("×", () => onDelete(m.key))}
                     </div>
                   </div>
                   <div style={{ fontSize: 12, color: "#ccc", fontFamily: "var(--body)", marginTop: 6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.value}</div>
-                  <div style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)", marginTop: 4 }}>updated {m.updated_at ? formatTs(m.updated_at) : ""}</div>
+                  <div style={{ fontSize: 10, color: "#777", fontFamily: "var(--mono)", marginTop: 4 }}>updated {m.updated_at ? formatTs(m.updated_at) : ""}</div>
                 </div>
               ))
             )}

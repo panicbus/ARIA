@@ -93,7 +93,7 @@ export function BriefingTab() {
 
   return (
     <div className="tab-briefing" style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#555", fontFamily: "var(--mono)", marginBottom: 4 }}>BRIEFINGS</div>
+      <div style={{ fontSize: 16, letterSpacing: "0.12em", color: "#999", fontWeight: 600, fontFamily: "var(--mono)", marginBottom: 4 }}>BRIEFINGS</div>
       {briefingError && (
         <div style={{ padding: "14px 18px", background: "rgba(255,71,87,0.1)", border: "1px solid rgba(255,71,87,0.3)", borderRadius: 8, fontSize: 16, color: "#ff6b6b", fontFamily: "var(--mono)" }}>
           {briefingError}
@@ -115,7 +115,7 @@ export function BriefingTab() {
               borderRadius: 14,
               border: "1px solid rgba(255,255,255,0.1)",
               background: briefingTypeTab === tab ? "rgba(0,255,148,0.12)" : "rgba(255,255,255,0.04)",
-              color: briefingTypeTab === tab ? "#00ff94" : "#666",
+              color: briefingTypeTab === tab ? "#00ff94" : "#888",
               cursor: "pointer",
             }}
           >
@@ -142,7 +142,7 @@ export function BriefingTab() {
       <div className="briefing-content" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "16px 18px" }}>
         {displayBriefing ? (
           <>
-            <div style={{ fontSize: 14, color: "#666", fontFamily: "var(--mono)", marginBottom: 12 }}>
+            <div style={{ fontSize: 14, color: "#888", fontFamily: "var(--mono)", marginBottom: 12 }}>
               {briefingTypeTab === "morning" ? "Morning" : "Evening"} Briefing · {formatDateShort(displayBriefing.created_at)} · {formatMilitary(displayBriefing.created_at)} PT
             </div>
             <div style={{ fontSize: 17, lineHeight: 1.65, color: "#ccc", fontFamily: "var(--body)" }}>
@@ -150,13 +150,13 @@ export function BriefingTab() {
             </div>
           </>
         ) : (
-          <div style={{ color: "#555", fontSize: 17, fontFamily: "var(--mono)" }}>
+          <div style={{ color: "#777", fontSize: 17, fontFamily: "var(--mono)" }}>
             No {briefingTypeTab} briefing yet. Briefings run automatically at 08:00 (morning) and 18:00 (evening) Pacific.
           </div>
         )}
       </div>
       <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-        <div style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)", marginBottom: 8, letterSpacing: "0.1em" }}>PREVIOUS MORNING BRIEFINGS</div>
+        <div style={{ fontSize: 10, color: "#777", fontFamily: "var(--mono)", marginBottom: 8, letterSpacing: "0.1em" }}>PREVIOUS MORNING BRIEFINGS</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {hasNewer && (
             <button
@@ -192,7 +192,7 @@ export function BriefingTab() {
                 </button>
               ))
             ) : (
-              <span style={{ fontSize: 12, color: "#555", fontFamily: "var(--mono)" }}>No morning briefings in the last 3 months</span>
+              <span style={{ fontSize: 12, color: "#777", fontFamily: "var(--mono)" }}>No morning briefings in the last 3 months</span>
             )}
           </div>
           {hasOlder && (

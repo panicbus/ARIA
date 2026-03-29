@@ -8,7 +8,7 @@ type Props = {
 export function MobileQuickToggle({ quickMode, onToggle }: Props) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-      <span style={{ fontSize: 10, color: quickMode ? "#00ff94" : "#666", fontFamily: "var(--mono)" }}>
+      <span style={{ fontSize: 10, color: quickMode ? "#00ff94" : "#888", fontFamily: "var(--mono)" }}>
         {quickMode ? "Quick mode active" : "Full data active"}
       </span>
       <button
@@ -40,7 +40,7 @@ export function MobileQuickToggle({ quickMode, onToggle }: Props) {
               width: 8,
               height: 8,
               borderRadius: "50%",
-              background: quickMode ? "#0a0a0a" : "#555",
+              background: quickMode ? "#0a0a0a" : "#777",
               position: "absolute",
               top: 1.5,
               left: quickMode ? undefined : 1,
@@ -49,7 +49,7 @@ export function MobileQuickToggle({ quickMode, onToggle }: Props) {
             }}
           />
         </div>
-        <span style={{ fontSize: 10, fontFamily: "var(--mono)", fontWeight: 500, color: quickMode ? "#00ff94" : "#666" }}>
+        <span style={{ fontSize: 10, fontFamily: "var(--mono)", fontWeight: 500, color: quickMode ? "#00ff94" : "#888" }}>
           Quick
         </span>
       </button>

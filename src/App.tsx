@@ -249,11 +249,11 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <StatusDot active={online} />
-              <span style={{ fontSize: 10, color: "#555", fontFamily: "var(--mono)" }}>{online ? (isMobile ? "online" : "SERVER ONLINE") : (isMobile ? "offline" : "SERVER OFFLINE")}</span>
+              <span style={{ fontSize: 10, color: "#777", fontFamily: "var(--mono)" }}>{online ? (isMobile ? "online" : "SERVER ONLINE") : (isMobile ? "offline" : "SERVER OFFLINE")}</span>
             </div>
             <div className="aria-top-tabs" style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 4 }}>
               {["chat", "portfolio", "signals", "scanner", "backtest", "briefing", "news", "memory"].map((t) => (
-                <button key={t} onClick={() => setActiveTab(t)} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontFamily: "var(--mono)", cursor: "pointer", border: "none", background: activeTab === t ? "rgba(0,255,148,0.12)" : "transparent", color: activeTab === t ? "#00ff94" : "#555", transition: "all 0.2s" }}>
+                <button key={t} onClick={() => setActiveTab(t)} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontFamily: "var(--mono)", cursor: "pointer", border: "none", background: activeTab === t ? "rgba(0,255,148,0.12)" : "transparent", color: activeTab === t ? "#00ff94" : "#777", transition: "all 0.2s" }}>
                   {t.toUpperCase()}
                 </button>
               ))}

@@ -108,6 +108,28 @@ export type ScannerStatus = {
   scanning: boolean;
   apiCallsRemaining: number;
   universeSize: number;
+  pendingCount: number;
+};
+
+export type ScannerCandidate = {
+  symbol: string;
+  category: string;
+  tier: string;
+  ohlcv_days: number;
+  has_sufficient_data: number;
+  status: "pending" | "active" | "rejected";
+  nominated_at: string;
+  activated_at?: string | null;
+};
+
+export type UniverseStats = {
+  total_active: number;
+  total_pending: number;
+  by_tier: Record<string, number>;
+  by_category: Record<string, number>;
+  graduating_soon: string[];
+  calls_used_today: number;
+  calls_remaining: number;
 };
 
 export type CryptoPortfolioHolding = {

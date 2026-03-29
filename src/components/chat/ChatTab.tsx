@@ -83,7 +83,7 @@ export function ChatTab({
             <button
               onClick={onClearChat}
               title="Clear chat window (keeps ARIA's memory — positions, watchlist, preferences)"
-              style={{ fontSize: 11, padding: "4px 11px", borderRadius: 20, background: "transparent", border: "1px solid rgba(255,255,255,0.08)", color: "#555", cursor: "pointer", fontFamily: "var(--mono)", transition: "all 0.15s" }}
+              style={{ fontSize: 11, padding: "4px 11px", borderRadius: 20, background: "transparent", border: "1px solid rgba(255,255,255,0.08)", color: "#777", cursor: "pointer", fontFamily: "var(--mono)", transition: "all 0.15s" }}
             >
               Clear chat
             </button>

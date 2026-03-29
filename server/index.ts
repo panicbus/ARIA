@@ -312,6 +312,18 @@ async function start() {
       added_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS scanner_candidates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      symbol TEXT UNIQUE NOT NULL,
+      category TEXT NOT NULL,
+      tier TEXT NOT NULL,
+      ohlcv_days INTEGER DEFAULT 0,
+      has_sufficient_data INTEGER DEFAULT 0,
+      nominated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      activated_at DATETIME,
+      status TEXT DEFAULT 'pending'
+    );
+
     CREATE TABLE IF NOT EXISTS scanner_results (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       symbol TEXT NOT NULL,
@@ -359,6 +371,7 @@ async function start() {
   alter("ALTER TABLE memories ADD COLUMN created_at TEXT");
   alter("ALTER TABLE briefings ADD COLUMN type TEXT NOT NULL DEFAULT 'morning'");
   alter("ALTER TABLE news ADD COLUMN summary TEXT");
+  alter("ALTER TABLE scanner_universe ADD COLUMN tier TEXT DEFAULT 'moderate'");
   // Backfill type from created_at (Pacific: hour < 12 = morning, else evening)
   const pacificHour = (iso: string) =>
     parseInt(new Date(iso).toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false }), 10);
@@ -442,6 +455,9 @@ async function start() {
     }
   }
 
+  const startupMem = process.memoryUsage();
+  console.log(`Startup memory: ${Math.round(startupMem.heapUsed / 1024 / 1024)}MB heap, ${Math.round(startupMem.rss / 1024 / 1024)}MB rss`);
+
   const buildLiveContext = createBuildLiveContext({ execAll });
   const buildMemoryContext = createBuildMemoryContext({ execAll });
   const getRiskContextForTicker = createGetRiskContextForTicker({ execAll });
@@ -513,6 +529,9 @@ async function start() {
     db,
     saveDb,
     cryptoIds: CRYPTO_COINGECKO_IDS,
+    execAll,
+    run,
+    onGraduationCheck: () => scannerService.runGraduationCheck(),
   });
 
   const pruneStorage = createPruneStorage({ execAll, run, saveDb });
@@ -533,11 +552,16 @@ async function start() {
     runMemoryExtraction,
   }));
   app.use("/api/memories", createMemoriesRouter({ db, execAll, saveDb, dataDir: DATA_DIR }));
+  scannerService.seedCandidatesAndUniverse();
+
   app.use("/api/scanner", createScannerRouter({
     getActiveUniverse: scannerService.getActiveUniverse,
     triggerScan: scannerService.triggerScan,
     getResults: scannerService.getResults,
     getStatus: scannerService.getStatus,
+    getCandidates: scannerService.getCandidates,
+    getUniverseStats: scannerService.getUniverseStats,
+    runWeeklyNomination: scannerService.runWeeklyNomination,
   }));
 
   app.use("/api/ohlcv", createOhlcvRouter({
@@ -618,11 +642,13 @@ async function start() {
   setInterval(checkAriaDbSize, DB_SIZE_CHECK_INTERVAL_MS);
 
   app.listen(PORT, () => {
+    const used = process.memoryUsage();
     console.log(`
   ╔═══════════════════════════════════╗
   ║   ARIA Server — Port ${PORT}         ║
   ║   Status: ONLINE                  ║
   ╚═══════════════════════════════════╝
+  Memory: ${Math.round(used.heapUsed / 1024 / 1024)}MB heap, ${Math.round(used.rss / 1024 / 1024)}MB rss
   `);
   });
 
@@ -658,18 +684,23 @@ async function start() {
     }
   }, { timezone: TZ });
 
-  // OHLCV refresh — daily at 05:30 Pacific (staggered to avoid memory spike with scanner/briefing)
-  cron.schedule("30 5 * * *", () => {
+  // Weekly nomination — Sunday at 05:00 Pacific (before OHLCV fetch)
+  cron.schedule("0 5 * * 0", () => {
+    scannerService.runWeeklyNomination().catch((err) => console.error("[cron] Nomination failed:", err));
+  }, { timezone: TZ });
+
+  // OHLCV refresh + graduation — daily at 06:00 Pacific
+  cron.schedule("0 6 * * *", () => {
     fetchAndStoreOHLCV().catch((err) => console.error("OHLCV refresh failed:", err));
   }, { timezone: TZ });
 
-  // Scanner — daily at 06:00 Pacific (1h before briefing to avoid overlap)
-  cron.schedule("0 6 * * *", () => {
+  // Scanner — daily at 07:30 Pacific (90 min after OHLCV to avoid overlap)
+  cron.schedule("30 7 * * *", () => {
     scannerService.runScan().catch((err) => console.error("Scanner failed:", err));
   }, { timezone: TZ });
 
-  // Morning briefing — every weekday at 07:00 Pacific. Delivered by email if SMTP configured.
-  cron.schedule("0 7 * * 1-5", async () => {
+  // Morning briefing — every weekday at 08:30 Pacific (60 min after scanner)
+  cron.schedule("30 8 * * 1-5", async () => {
     const now = new Date().toLocaleString("en-US", { timeZone: TZ });
     console.log("[cron] Morning briefing triggered at", now);
     try {
@@ -684,8 +715,8 @@ async function start() {
     }
   }, { timezone: TZ });
 
-  // Evening briefing — every weekday at 20:00 (8pm) Pacific. Delivered by email if SMTP configured.
-  cron.schedule("0 20 * * 1-5", async () => {
+  // Evening briefing — every weekday at 18:00 Pacific
+  cron.schedule("0 18 * * 1-5", async () => {
     const now = new Date().toLocaleString("en-US", { timeZone: TZ });
     console.log("[cron] Evening briefing triggered at", now);
     try {

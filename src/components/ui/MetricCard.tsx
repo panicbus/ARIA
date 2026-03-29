@@ -42,7 +42,7 @@ export function MetricCard({
         {value}
       </div>
       {sub && (
-        <div style={{ fontSize: 11, color: "#555", marginTop: 3, fontFamily: "var(--mono)" }}>{sub}</div>
+        <div style={{ fontSize: 11, color: "#777", marginTop: 3, fontFamily: "var(--mono)" }}>{sub}</div>
       )}
       {rsi != null && (
         <div style={{ fontSize: 10, color: rsiColor, fontFamily: "var(--mono)", marginTop: 2 }}>

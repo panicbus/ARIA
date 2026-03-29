@@ -98,7 +98,7 @@
   .tab-briefing .briefing-btn-evening:not(.briefing-btn-active) {
     background: rgba(255, 255, 255, 0.05);
     border: 0.5px solid rgba(255, 255, 255, 0.09);
-    color: #555;
+    color: #777;
   }
   .tab-briefing .briefing-content {
     font-size: 14px;

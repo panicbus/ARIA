@@ -141,7 +141,7 @@ export function MarketPulseAccordion({
             transform: open ? "rotate(90deg)" : "none",
             display: "inline-block",
             fontSize: 10,
-            color: "#555",
+            color: "#777",
             transition: "transform 0.2s ease",
           }}
         >
