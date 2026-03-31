@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { signalColors } from "../../config";
-import type { Signal } from "../../types";
+import { API, signalColors } from "../../config";
+import type { Signal, AccuracySummary } from "../../types";
 
 /** Strip JSON-array formatting from ticker (e.g. ["IGPT"] -> IGPT) */
 function displayTicker(t: string): string {
@@ -47,6 +47,11 @@ const signalsExplainer = (
   </div>
 );
 
+const winRateColor = (rate: number) =>
+  rate >= 0.6 ? "#4ade80" : rate >= 0.4 ? "#fbbf24" : "#f87171";
+
+const fmtPct = (n: number) => `${Math.round(n * 100)}%`;
+
 export function SignalsTab({
   signals,
   formatTs,
@@ -56,6 +61,16 @@ export function SignalsTab({
 }) {
   const [infoOpen, setInfoOpen] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
+  const [accuracy, setAccuracy] = useState<AccuracySummary | null>(null);
+
+  useEffect(() => {
+    fetch(`${API}/signals/accuracy`)
+      .then((r) => r.json())
+      .then((d: AccuracySummary) => setAccuracy(d))
+      .catch(() => {});
+  }, []);
+
+  const tickerAccuracy = accuracy ? new Map(accuracy.by_ticker.map((r) => [r.ticker, r])) : new Map();
 
   useEffect(() => {
     if (!infoOpen) return;
@@ -115,6 +130,23 @@ export function SignalsTab({
           </div>
         )}
       </div>
+      {accuracy && (
+        accuracy.overall.total_evaluated >= 10 ? (
+          <div style={{ background: "rgba(255,255,255,0.03)", border: "0.5px solid rgba(255,255,255,0.07)", borderRadius: 8, padding: "8px 12px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "#888", fontFamily: "var(--mono)", letterSpacing: "0.1em" }}>ARIA ACCURACY</span>
+            <span style={{ fontSize: 13, fontWeight: 500, fontFamily: "var(--mono)" }}>
+              <span style={{ color: winRateColor(accuracy.overall.win_rate_3d) }}>3d: {fmtPct(accuracy.overall.win_rate_3d)}</span>
+              <span style={{ color: "#444", margin: "0 6px" }}>·</span>
+              <span style={{ color: winRateColor(accuracy.overall.win_rate_7d) }}>7d: {fmtPct(accuracy.overall.win_rate_7d)}</span>
+            </span>
+            <span style={{ fontSize: 9, color: "#444", fontFamily: "var(--mono)" }}>Based on {accuracy.overall.total_evaluated} signals</span>
+          </div>
+        ) : accuracy.overall.total_signals > 0 ? (
+          <div style={{ background: "rgba(255,255,255,0.03)", border: "0.5px solid rgba(255,255,255,0.07)", borderRadius: 8, padding: "8px 12px", marginBottom: 10, textAlign: "center" }}>
+            <span style={{ fontSize: 10, color: "#444", fontFamily: "var(--mono)" }}>Accuracy tracking — building data…</span>
+          </div>
+        ) : null
+      )}
       {signals.length === 0 ? (
         <div style={{ color: "#777", fontSize: 13, fontFamily: "var(--mono)" }}>No signals yet. Prices refresh every 5m; signals use technical composite (RSI/MACD/MAs) or 24h fallback.</div>
       ) : (
@@ -160,6 +192,27 @@ export function SignalsTab({
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: "#777", fontFamily: "var(--mono)" }}>${Number(s.price).toLocaleString()} · {s.created_at ? formatTs(s.created_at) : ""}</div>
+                {(() => {
+                  const tk = displayTicker(s.ticker);
+                  const acc = tickerAccuracy.get(tk);
+                  if (!acc) return null;
+                  const evaluated = Math.max(acc.checked_3d, acc.checked_7d);
+                  return (
+                    <div style={{ borderTop: "0.5px solid rgba(255,255,255,0.06)", paddingTop: 6, marginTop: 6, display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 9, fontFamily: "var(--mono)" }}>
+                      <span style={{ color: "#555" }}>Historical accuracy</span>
+                      {evaluated >= 3 ? (
+                        <span>
+                          <span style={{ color: winRateColor(acc.win_rate_3d) }}>3d: {fmtPct(acc.win_rate_3d)}</span>
+                          <span style={{ color: "#444", margin: "0 4px" }}>·</span>
+                          <span style={{ color: winRateColor(acc.win_rate_7d) }}>7d: {fmtPct(acc.win_rate_7d)}</span>
+                        </span>
+                      ) : (
+                        <span style={{ color: "#444" }}>building…</span>
+                      )}
+                      <span style={{ color: "#444" }}>({evaluated} signals)</span>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

@@ -182,3 +182,30 @@ export interface StockNewsArticle {
   published_at: string;
   created_at: string;
 }
+
+export interface AccuracyRow {
+  ticker?: string;
+  signal: string;
+  total_signals: number;
+  correct_3d: number;
+  checked_3d: number;
+  correct_7d: number;
+  checked_7d: number;
+  win_rate_3d: number;
+  win_rate_7d: number;
+  avg_return_3d: number;
+  avg_return_7d: number;
+}
+
+export interface AccuracySummary {
+  overall: {
+    total_signals: number;
+    total_evaluated: number;
+    win_rate_3d: number;
+    win_rate_7d: number;
+    avg_return_3d: number;
+    avg_return_7d: number;
+  };
+  by_ticker: AccuracyRow[];
+  by_signal_type: AccuracyRow[];
+}

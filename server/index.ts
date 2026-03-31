@@ -355,6 +355,29 @@ async function start() {
     CREATE INDEX IF NOT EXISTS idx_stock_news_published
     ON stock_news(published_at DESC);
 
+    CREATE TABLE IF NOT EXISTS signal_outcomes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticker TEXT NOT NULL,
+      signal TEXT NOT NULL,
+      score INTEGER,
+      price_at_signal REAL NOT NULL,
+      signal_date TEXT NOT NULL,
+      price_3d REAL,
+      outcome_3d TEXT,
+      checked_3d INTEGER DEFAULT 0,
+      price_7d REAL,
+      outcome_7d TEXT,
+      checked_7d INTEGER DEFAULT 0,
+      pct_change_3d REAL,
+      pct_change_7d REAL,
+      source TEXT DEFAULT 'scanner',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(ticker, signal_date)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_signal_outcomes_date
+    ON signal_outcomes(signal_date, checked_3d, checked_7d);
+
     CREATE TABLE IF NOT EXISTS crypto_portfolio (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       symbol TEXT NOT NULL UNIQUE,
@@ -679,6 +702,7 @@ async function start() {
     await fetchStockNews();
     await refreshCryptoPortfolio();
     await fetchAndStoreOHLCV();
+    scannerService.checkSignalOutcomes();
     generateSignals();
   }).catch((err) => console.error("Initial fetch failed:", err));
 
@@ -711,9 +735,11 @@ async function start() {
     scannerService.runWeeklyNomination().catch((err) => console.error("[cron] Nomination failed:", err));
   }, { timezone: TZ });
 
-  // OHLCV refresh + graduation — daily at 06:00 Pacific
+  // OHLCV refresh + graduation + signal outcome checking — daily at 06:00 Pacific
   cron.schedule("0 6 * * *", () => {
-    fetchAndStoreOHLCV().catch((err) => console.error("OHLCV refresh failed:", err));
+    fetchAndStoreOHLCV()
+      .then(() => scannerService.checkSignalOutcomes())
+      .catch((err) => console.error("OHLCV refresh failed:", err));
   }, { timezone: TZ });
 
   // Scanner — daily at 07:30 Pacific (90 min after OHLCV to avoid overlap)

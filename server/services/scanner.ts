@@ -314,6 +314,7 @@ export function createScannerService(deps: ScannerDeps) {
       }
 
       await filterWithAria();
+      recordSignalOutcomes();
       logMem("scanner end");
     } finally {
       scanning = false;
@@ -544,6 +545,111 @@ Return ONLY a valid JSON array, no other text:
     runScan().catch((e) => console.error("Scanner run failed:", e));
   }
 
+  // WAYPOINT [signal-outcome-recording]
+  // WHAT: Saves today's directional scanner signals with entry prices for future accuracy checking.
+  // WHY: Can't measure accuracy without knowing what signal fired and at what price.
+  // HOW IT HELPS NICO: Builds evidence base for which signals are actually trustworthy.
+  function recordSignalOutcomes(): void {
+    const today = new Date().toISOString().split("T")[0];
+    const results = execAll<{ symbol: string; signal: string; score: number; price: number }>(
+      `SELECT sr.symbol, sr.signal, sr.score, p.price
+       FROM scanner_results sr
+       LEFT JOIN prices p ON p.symbol = sr.symbol
+       WHERE sr.signal IN ('BUY','STRONG BUY','SELL','STRONG SELL')
+         AND sr.aria_reasoning IS NOT NULL
+         AND p.price IS NOT NULL`
+    );
+    let count = 0;
+    for (const r of results) {
+      try {
+        run(
+          `INSERT OR IGNORE INTO signal_outcomes (ticker, signal, score, price_at_signal, signal_date)
+           VALUES (:ticker, :signal, :score, :price, :date)`,
+          { ":ticker": r.symbol, ":signal": r.signal, ":score": r.score, ":price": r.price, ":date": today }
+        );
+        count++;
+      } catch {}
+    }
+    saveDb();
+    console.log(`Signal outcomes: recorded ${count} directional signals for ${today}`);
+  }
+
+  // WAYPOINT [signal-outcome-checker]
+  // WHAT: Looks up prices 3 and 7 days after each signal and marks it correct or incorrect.
+  // WHY: This is how ARIA learns whether her signals actually predicted price direction.
+  // HOW IT HELPS NICO: Shows win rate per ticker and signal type so he knows what to trust.
+  function checkSignalOutcomes(): void {
+    const BULLISH = ["BUY", "STRONG BUY"];
+    const BEARISH = ["SELL", "STRONG SELL"];
+
+    const resolvePriceForDate = (ticker: string, dateStr: string): number | null => {
+      const ohlcv = execAll<{ close: number }>(
+        `SELECT close FROM ohlcv WHERE symbol = '${sqlQ(ticker)}' AND date = '${sqlQ(dateStr)}' LIMIT 1`
+      );
+      if (ohlcv.length) return ohlcv[0].close;
+      // Try nearest OHLCV row within 3 days (weekends/holidays)
+      const nearby = execAll<{ close: number }>(
+        `SELECT close FROM ohlcv WHERE symbol = '${sqlQ(ticker)}' AND date BETWEEN date('${sqlQ(dateStr)}', '-3 days') AND date('${sqlQ(dateStr)}', '+3 days') ORDER BY ABS(julianday(date) - julianday('${sqlQ(dateStr)}')) LIMIT 1`
+      );
+      return nearby[0]?.close ?? null;
+    };
+
+    // 3-day checks
+    const pending3d = execAll<{ id: number; ticker: string; signal: string; price_at_signal: number; signal_date: string }>(
+      "SELECT id, ticker, signal, price_at_signal, signal_date FROM signal_outcomes WHERE checked_3d = 0 AND signal_date <= date('now', '-3 days') LIMIT 100"
+    );
+    for (const row of pending3d) {
+      const targetDate = new Date(row.signal_date + "T00:00:00Z");
+      targetDate.setUTCDate(targetDate.getUTCDate() + 3);
+      const target = targetDate.toISOString().split("T")[0];
+      const price3d = resolvePriceForDate(row.ticker, target);
+      if (price3d == null) continue;
+      const pct = ((price3d - row.price_at_signal) / row.price_at_signal) * 100;
+      const outcome = BULLISH.includes(row.signal)
+        ? (price3d > row.price_at_signal ? "correct" : "incorrect")
+        : BEARISH.includes(row.signal)
+          ? (price3d < row.price_at_signal ? "correct" : "incorrect")
+          : "na";
+      run(
+        `UPDATE signal_outcomes SET price_3d = :p, pct_change_3d = :pct, outcome_3d = :o, checked_3d = 1 WHERE id = :id`,
+        { ":p": price3d, ":pct": Math.round(pct * 100) / 100, ":o": outcome, ":id": row.id }
+      );
+    }
+
+    // 7-day checks
+    const pending7d = execAll<{ id: number; ticker: string; signal: string; price_at_signal: number; signal_date: string }>(
+      "SELECT id, ticker, signal, price_at_signal, signal_date FROM signal_outcomes WHERE checked_7d = 0 AND signal_date <= date('now', '-7 days') LIMIT 100"
+    );
+    for (const row of pending7d) {
+      const targetDate = new Date(row.signal_date + "T00:00:00Z");
+      targetDate.setUTCDate(targetDate.getUTCDate() + 7);
+      const target = targetDate.toISOString().split("T")[0];
+      const price7d = resolvePriceForDate(row.ticker, target);
+      if (price7d == null) continue;
+      const pct = ((price7d - row.price_at_signal) / row.price_at_signal) * 100;
+      const outcome = BULLISH.includes(row.signal)
+        ? (price7d > row.price_at_signal ? "correct" : "incorrect")
+        : BEARISH.includes(row.signal)
+          ? (price7d < row.price_at_signal ? "correct" : "incorrect")
+          : "na";
+      run(
+        `UPDATE signal_outcomes SET price_7d = :p, pct_change_7d = :pct, outcome_7d = :o, checked_7d = 1 WHERE id = :id`,
+        { ":p": price7d, ":pct": Math.round(pct * 100) / 100, ":o": outcome, ":id": row.id }
+      );
+    }
+
+    saveDb();
+    const stats = execAll<{ total: number; correct_3d: number; correct_7d: number }>(
+      `SELECT COUNT(*) as total,
+              SUM(CASE WHEN outcome_3d = 'correct' THEN 1 ELSE 0 END) as correct_3d,
+              SUM(CASE WHEN outcome_7d = 'correct' THEN 1 ELSE 0 END) as correct_7d
+       FROM signal_outcomes WHERE outcome_3d IS NOT NULL OR outcome_7d IS NOT NULL`
+    );
+    if (stats[0]?.total > 0) {
+      console.log(`Signal accuracy: ${stats[0].correct_3d}/${stats[0].total} correct at 3d, ${stats[0].correct_7d}/${stats[0].total} correct at 7d`);
+    }
+  }
+
   return {
     seedCandidatesAndUniverse,
     runGraduationCheck,
@@ -556,5 +662,6 @@ Return ONLY a valid JSON array, no other text:
     getUniverseStats,
     getStatus,
     runWeeklyNomination,
+    checkSignalOutcomes,
   };
 }
