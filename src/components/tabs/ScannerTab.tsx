@@ -48,7 +48,7 @@ export function ScannerTab({
   onAddToWatchlist,
   onViewBacktest,
 }: {
-  onAddToWatchlist?: (ticker: string) => Promise<void>;
+  onAddToWatchlist?: (ticker: string) => Promise<"added" | "duplicate" | void>;
   onViewBacktest?: (ticker: string) => void;
 }) {
   const [results, setResults] = useState<ScannerResult[]>([]);
@@ -60,6 +60,8 @@ export function ScannerTab({
   const [candidates, setCandidates] = useState<ScannerCandidate[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [addingTicker, setAddingTicker] = useState<string | null>(null);
+  const [dupToast, setDupToast] = useState<string | null>(null);
+  const dupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
   const [companyNames, setCompanyNames] = useState<Record<string, string>>({});
   const infoRef = useRef<HTMLDivElement>(null);
@@ -152,7 +154,12 @@ export function ScannerTab({
     if (!onAddToWatchlist) return;
     setAddingTicker(ticker);
     try {
-      await onAddToWatchlist(ticker);
+      const result = await onAddToWatchlist(ticker);
+      if (result === "duplicate") {
+        if (dupTimerRef.current) clearTimeout(dupTimerRef.current);
+        setDupToast(ticker);
+        dupTimerRef.current = setTimeout(() => setDupToast(null), 5000);
+      }
     } finally {
       setAddingTicker(null);
     }
@@ -339,6 +346,20 @@ export function ScannerTab({
                     {addingTicker === r.symbol ? "Adding…" : isMobile ? "+ watchlist" : "Add to Watchlist"}
                   </button>
                 </div>
+                {dupToast === r.symbol && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "#ff6b81",
+                      fontFamily: "var(--mono)",
+                      textAlign: "right",
+                      marginTop: 6,
+                      animation: "fadeIn 0.2s ease",
+                    }}
+                  >
+                    {r.symbol} is already on your watchlist
+                  </div>
+                )}
               </div>
             ))}
           </div>

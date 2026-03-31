@@ -208,12 +208,12 @@ export default function App() {
     } catch (_) {}
   };
 
-  const addToWatchlist = async (ticker: string) => {
+  const addToWatchlist = async (ticker: string): Promise<"added" | "duplicate"> => {
     const sym = ticker.toUpperCase();
     const watchRow = memories.find((m) => m.key === "watchlist");
     const current = watchRow?.value?.trim() ?? "";
     const existing = current.split(/[\s,]+/).map((s) => s.toUpperCase()).filter(Boolean);
-    if (existing.includes(sym)) return;
+    if (existing.includes(sym)) return "duplicate";
     const updated = [...existing, sym].join(", ");
     try {
       await fetch(`${API}/memories`, {
@@ -224,6 +224,7 @@ export default function App() {
       loadMemories();
       setSidebarRefreshTrigger((t) => t + 1);
     } catch (_) {}
+    return "added";
   };
 
   return (
