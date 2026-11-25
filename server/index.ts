@@ -742,8 +742,12 @@ async function start() {
       .catch((err) => console.error("OHLCV refresh failed:", err));
   });
 
+  // Scheduled briefings are off unless BRIEFINGS_ENABLED=true. Manual generation via /api/briefings still works.
+  const briefingsEnabled = process.env.BRIEFINGS_ENABLED?.trim() === "true";
+  if (!briefingsEnabled) console.log("[cron] Scheduled briefings disabled (set BRIEFINGS_ENABLED=true to enable)");
+
   // Morning briefing — every weekday at 07:00 Pacific
-  new Cron("0 7 * * 1-5", { timezone: TZ }, async () => {
+  if (briefingsEnabled) new Cron("0 7 * * 1-5", { timezone: TZ }, async () => {
     const now = new Date().toLocaleString("en-US", { timeZone: TZ });
     console.log("[cron] Morning briefing triggered at", now);
     try {
@@ -770,7 +774,7 @@ async function start() {
   });
 
   // Evening briefing — every weekday at 20:00 Pacific
-  new Cron("0 20 * * 1-5", { timezone: TZ }, async () => {
+  if (briefingsEnabled) new Cron("0 20 * * 1-5", { timezone: TZ }, async () => {
     const now = new Date().toLocaleString("en-US", { timeZone: TZ });
     console.log("[cron] Evening briefing triggered at", now);
     try {
